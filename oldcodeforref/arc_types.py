@@ -1,0 +1,30 @@
+from typing import (
+    List,
+    Union,
+    Tuple,
+    Any,
+    Container,
+    Callable,
+    FrozenSet,
+    Iterable
+)
+
+Boolean = bool
+Integer = int
+IntegerTuple = Tuple[Integer, Integer]
+Numerical = Union[Integer, IntegerTuple]
+IntegerSet = FrozenSet[Integer]
+Grid = Tuple[Tuple[Integer]]
+Cell = Tuple[Integer, IntegerTuple]
+Object = FrozenSet[Cell]
+Objects = FrozenSet[Object]
+Indices = FrozenSet[IntegerTuple]
+IndicesSet = FrozenSet[Indices]
+Patch = Union[Object, Indices]
+Element = Union[Object, Grid]
+Piece = Union[Grid, Patch]
+TupleTuple = Tuple[Tuple]
+# Container = Union[Piece, Element]
+# ...existing code...
+Container = Union[Piece, Element]
+ContainerContainer = Union[Container, Tuple[Container, ...]]
