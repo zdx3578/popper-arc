@@ -42,7 +42,7 @@ def load_json(arcfile_path):
 
 # DATA_PATH = '/kaggle/input/3-28arcdsl/forpopper2'
 # DATA_PATH = '/Users/zhangdexiang/github/ARC-AGI-2/arc-prize-2025'
-DATA_PATH = '/home/zdx/github/ARC-AGI-2/arc-prize-2025'
+DATA_PATH = './data'
 
 def prepare_arc_data():
     train_tasks   = load_json(f'{DATA_PATH}/arc-agi_training_challenges.json')

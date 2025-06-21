@@ -1,0 +1,283 @@
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Run main.py with dataset",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper3GeneraladdTask05/main.py",
+//             "cwd": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper/",
+//             // // '/home/zdx/github/VSAHDC/arcMrule/pure-manual-rule.py'
+//             "args": [
+//                 "../popper/05a7bcf2.json ",
+//             ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run main.py with dataset",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper3GeneraladdTask05/main.py",
+            "justMyCode": false,
+            "cwd": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper3GeneraladdTask05/",
+            // // '/home/zdx/github/VSAHDC/arcMrule/pure-manual-rule.py'
+            "args": [
+                "/Users/zhangdexiang/github/ARC-AGI-2/data/training/05a7bcf2.json",
+                "--debug",
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
+
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Run main.py with dataset",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper/run_arc_solver_integration.py",
+//             "cwd": "/Users/zhangdexiang/github/VSAHDC/arcMrule/popper/",
+//             // // '/home/zdx/github/VSAHDC/arcMrule/pure-manual-rule.py'
+//             // "args": [
+//             //     "--process-all",
+//             //     "--task-type",
+//             //     "train",
+//             //     "--debug",
+//             //     //     "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000"
+//             // ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Run main.py with dataset",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/Users/zhangdexiang/github/VSAHDC/arcMrule/diffstar/main.py",
+//             // '/home/zdx/github/VSAHDC/arcMrule/pure-manual-rule.py'
+//             "args": [
+//                 "--process-all",
+//                 "--task-type",
+//                 "train",
+//                 "--debug",
+//                 //     "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000"
+//             ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Run main.py with dataset",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/Users/zhangdexiang/github/VSAHDC/arcMrule/diffstar/main.py",
+//             // '/home/zdx/github/VSAHDC/arcMrule/pure-manual-rule.py'
+//             "args": [
+//                 "--process-all",
+//                 "--task-type",
+//                 "train",
+//                 "--debug",
+//                 //     "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000"
+//             ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//       {
+//         "name": "Python: Train RAVEN",
+//         "type": "debugpy",
+//         "request": "launch",
+//         "program": "/home/zdx/github/VSAHDC/neuro-vector-symbolic-architectures-raven/raven/main_nvsa_marg.py",
+//         "console": "integratedTerminal",
+//         "cwd": "/home/zdx/github/VSAHDC/neuro-vector-symbolic-architectures-raven/",
+//         "args": [
+//           "--mode", "train",
+//           "--config", "center_single",
+//           "--epochs", "50",
+//           "--s", "7",
+//           "--trainable-s",
+//           "--exp_dir", "/tmp/",
+//           "--dataset", "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000",
+//           "--dataset-i-raven", "/home/zdx/github/VSAHDC/abductive-rule-learner-with-context-awareness/data/",
+//           "--seed", "1234",
+//           "--run", "0"
+//         ],
+//         "env": {
+//           "EXPNR": "000",
+//         //   "SAVEPATH": "/dccstor/saentis/log/03_rpm/",
+//         //   "DATAPATH": "/dccstor/saentis/data/RAVEN/RAVEN-10000",
+//         //   "DATAPATHIRAVEN": "/dccstor/saentis/data/I-RAVEN/",
+//         //   "EXPNAME": "nvsa_test2",
+//         //   "EXPPATH": "/dccstor/saentis/log/03_rpm/nvsa_test2/",
+//           "SEED": "1234",
+//           "RUN": "0"
+//         }
+//       }
+//     ]
+// }
+// 2023
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Debug attribute_level_backend   ！！  mlp  ID  1111111111111111111111 ！！！！！！！！！",
+//             //  OOD:   python3 src/attribute_level_backend.py  --config center_single  --gen_attribute 'Color' --gen_rule 'Progression'
+//             //  OOD:   python3 src/attribute_level_backend.py  --config center_single  --gen_attribute 'Color' --gen_rule 'Distribute_Three'
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/home/zdx/github/VSAHDC/learn-vector-symbolic-architectures-rule-formulations/src/attribute_level_backend.py",
+//             "args": [
+//                 "--data_dir", "/home/zdx/github/VSAHDC/iraven10000/iraven10000",
+//                 "--batch_size", "256",   //  1  1
+//                 "--config", "center_single"],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Debug rule_level_backend   ！！！！！！     VRF  ID22222222222222222222！！！！！！！！！！！",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/home/zdx/github/VSAHDC/learn-vector-symbolic-architectures-rule-formulations/src/rule_level_backend.py",
+//             "args": [
+//                 "--epochs", "50",
+//                 "--vsa_conversion",
+//                 "--vsa_selection",
+//                 "--rule_selector", "sample",
+//                 "--shared_rules",
+//                 "--data_dir", "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000",
+//                 "--config", "center_single"
+//             ],
+//             "console": "integratedTerminal",
+//             "env": {
+//                 "EPOCHS": "50",
+//                 "SELECTOR": "sample"
+//             }
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Debug rule_level_backend with gen_attribute ！ ！  VRF  OOD  33333333333333333333 ！ ！！！！！！！！！！！！！   and gen_rule",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/home/zdx/github/VSAHDC/learn-vector-symbolic-architectures-rule-formulations/src/rule_level_backend.py",
+//             "args": [
+//                 "--vsa_conversion",
+//                 "--vsa_selection",
+//                 "--shared_rules",
+//                 "--data_dir", "/home/zdx/github/VSAHDC/ravendataset/RAVEN-10000",
+//                 "--config", "center_single",
+//                 "--gen_attribute", "Type",
+//                 "--gen_rule", "Constant"
+//             ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// 2024
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python: Run Main Script with Different Seeds",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/home/zdx/github/VSAHDC/abductive-rule-learner-with-context-awareness/main.py",
+//             //"console": "integratedTerminal",  // 在终端输出信息
+//             "justMyCode": true,  // 是否只调试自己的代码
+//             "cwd": "/home/zdx/github/VSAHDC/abductive-rule-learner-with-context-awareness",  // 工作目录
+//             "args": [
+//                 "--epochs", "25",
+//                 "--vsa_conversion",
+//                 "--vsa_selection",
+//                 "--shared_rules",
+//                 "--config", "distribute_four",
+//                 "--data_dir", "data",
+//                 "--batch_size", "8",
+//                 "--num_workers", "1",
+//                 "--num_rules", "5",
+//                 "--run_name", "arlc_learn",
+//                 "--exp_dir", "models"
+//             ],
+//             "env": {
+//                 "SEED": "1"  // 修改此行以使用不同的种子值
+//             },
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python: Debug run_mutate.py",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "/Users/zhangdexiang/github/VSAHDC/arc-dsl/main.py",
+//             "console": "integratedTerminal",  // 在终端输出信息
+//             "justMyCode": true,  // 是否只调试自己的代码
+//             // "args": ["hydra.run.dir=outputs/codeit/"], //mutation/"],  // 如果命令需要传递参数，可以在这里添加
+//             "cwd": "/Users/zhangdexiang/github/VSAHDC/arc-dsl",  // 工作目录
+//             // "env": {}  // 如果需要设置环境变量可以在这里添加
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Run ARC Problem",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "GPAR/ARC-PDDL/main.py",
+//             "args": [
+//                 "--problem",
+//                 "/Users/zhangdexiang/github/VSAHDC/arc-dsl/data/training",
+//                 "--out_dir",
+//                 "/Users/zhangdexiang/github/VSAHDC/GPAR/ARC-Planner/new_color_task",
+//                 "--type",
+//                 "/Users/zhangdexiang/github/VSAHDC/GPAR/ARC-PDDL/recolor.txt"
+//             ],
+//             "console": "integratedTerminal"
+//         }
+//     ]
+// }
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python: Debug run_mutate.py",
+//             "type": "python",
+//             "request": "launch",
+//             "program": "./run/run_codeit.py",  //run_mutate.py",  ///home/zdx/github/VSAHDC/codeit/run/run_mutate.py", //./run/run_mutate.py",
+//             "console": "integratedTerminal",  // 在终端输出信息
+//             "justMyCode": true,  // 是否只调试自己的代码
+//             "args": ["hydra.run.dir=outputs/codeit/"], //mutation/"],  // 如果命令需要传递参数，可以在这里添加
+//             "cwd": "/home/zdx/github/VSAHDC/codeit",  // 工作目录
+//             "env": {}  // 如果需要设置环境变量可以在这里添加
+//         }
+//     ]
+// }

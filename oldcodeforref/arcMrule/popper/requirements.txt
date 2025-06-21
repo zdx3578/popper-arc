@@ -1,0 +1,3 @@
+numpy>=1.19.0
+matplotlib>=3.3.0
+popper>=0.0.6
