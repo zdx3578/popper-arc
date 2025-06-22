@@ -3,6 +3,33 @@ import json
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 
+
+class IdManager:
+    """Simple ID manager for assigning incremental IDs per category."""
+
+    def __init__(self) -> None:
+        self.tables: Dict[str, Dict[Any, int]] = {}
+        self.next_id: Dict[str, int] = {}
+
+    def get_id(self, category: str, value: Any) -> int:
+        if isinstance(value, set):
+            value = frozenset(value)
+        if category not in self.tables:
+            self.tables[category] = {}
+            self.next_id[category] = 1
+        table = self.tables[category]
+        if value not in table:
+            table[value] = self.next_id[category]
+            self.next_id[category] += 1
+        return table[value]
+
+    def reset(self) -> None:
+        self.tables = {}
+        self.next_id = {}
+
+
+managerid = IdManager()
+
 # ---------------- Utility functions ----------------
 
 def grid2grid_fromgriddiff(grid1, grid2):
@@ -216,6 +243,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         color_counts[v] += 1
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
     obj_id = f"{pair_id}_{in_or_out}_{hash(obj_000)}_{bounding_box[0]}_{bounding_box[1]}"
+    obj_num_ID = "objID : " + str(managerid.get_id("OBJshape", obj_000))
     info = {
         "pair_id": pair_id,
         "in_or_out": in_or_out,
@@ -236,6 +264,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "width": width,
         "main_color": main_color,
         "obj_id": obj_id,
+        "obj_num_ID": obj_num_ID,
         "rotated_variants": [("rot_0", obj_00)] + [
             (f"rot_{d}", shift_to_origin(grid_to_object({90: rot90, 180: rot180, 270: rot270}[d](object_to_grid(obj_00)))))
             for d in (90, 180, 270)
@@ -259,6 +288,7 @@ def extract_object_infos_from_grid(pair_id: int, in_or_out: str, grid: List[List
 def extract_objects_from_task(task_data: Dict[str, Any], background_color: int = None,
                               param: Tuple[bool, bool, bool] = (True, True, False)) -> Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]:
     """Given a task dictionary, return extracted object infos for each pair."""
+    managerid.reset()
     if background_color is None:
         background_color = determine_background_color(task_data)
     all_objects = {"input": [], "output": []}
@@ -282,11 +312,92 @@ def run_extraction(task_path: str) -> Dict[str, List[Tuple[int, List[Dict[str, A
     return extract_objects_from_task(task_data)
 
 
+def prolog_atom(text: str) -> str:
+    """Convert arbitrary text to a safe Prolog atom."""
+    return ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in text)
+
+
+def objects_to_bk_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
+    """Convert extracted object infos into simple Popper background facts."""
+    lines: List[str] = []
+
+    # gather grid sizes
+    seen_pairs: Dict[Tuple[str, int], Tuple[int, int]] = {}
+    color_set = set()
+    for cat in ("input", "output"):
+        for pair_id, objs in all_objects.get(cat, []):
+            if objs:
+                seen_pairs[(cat, pair_id)] = objs[0]["grid_hw"]
+            for info in objs:
+                color_set.add(info["main_color"])
+
+    for (cat, pair_id), (h, w) in seen_pairs.items():
+        lines.append(f"grid_size({cat}_{pair_id},{h},{w}).")
+
+    for color in sorted(color_set):
+        lines.append(f"color_value({color}).")
+
+    for cat in ("input", "output"):
+        for pair_id, objs in all_objects.get(cat, []):
+            for idx, info in enumerate(objs):
+                obj_name = prolog_atom(info["obj_num_ID"]) or f"obj_{pair_id}_{idx}"
+                lines.append(f"object({obj_name}).")
+                lines.append(f"belongs({obj_name},{cat}_{pair_id}).")
+                lines.append(f"x_min({obj_name},{info['left']}).")
+                lines.append(f"y_min({obj_name},{info['top']}).")
+                lines.append(f"width({obj_name},{info['width']}).")
+                lines.append(f"height({obj_name},{info['height']}).")
+                lines.append(f"color({obj_name},{info['main_color']}).")
+                lines.append(f"size({obj_name},{info['size']}).")
+
+    return lines
+
+
+def save_bk(lines: List[str], path: str) -> None:
+    with open(path, "w") as f:
+        f.write("\n".join(lines))
+
+
+def generate_bias() -> str:
+    """Return a minimal bias string for the generated BK."""
+    bias_lines = [
+        "head_pred(target/1).",
+        "body_pred(grid_size/3).",
+        "body_pred(color_value/1).",
+        "body_pred(object/1).",
+        "body_pred(belongs/2).",
+        "body_pred(x_min/2).",
+        "body_pred(y_min/2).",
+        "body_pred(width/2).",
+        "body_pred(height/2).",
+        "body_pred(color/2).",
+        "body_pred(size/2).",
+        "max_vars(6).",
+        "max_body(6).",
+        "max_clauses(3).",
+    ]
+    return "\n".join(bias_lines)
+
+
 if __name__ == "__main__":
     import sys
     task_path = sys.argv[1] if len(sys.argv) > 1 else "05a7bcf2.json"
     if os.path.exists(task_path):
         objs = run_extraction(task_path)
         print(json.dumps(objs, indent=2, default=str))
+
+        bk_lines = objects_to_bk_lines(objs)
+        bk_path = os.path.splitext(task_path)[0] + "_bk.pl"
+        save_bk(bk_lines, bk_path)
+        print(f"BK file saved to: {bk_path}")
+        with open(bk_path, "r") as f:
+            print(f.read())
+
+        bias_content = generate_bias()
+        bias_path = os.path.splitext(task_path)[0] + "_bias.pl"
+        with open(bias_path, "w") as f:
+            f.write(bias_content)
+        print(f"Bias file saved to: {bias_path}")
+        print(bias_content)
     else:
         print(f"Task file {task_path} not found")
