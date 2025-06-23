@@ -177,7 +177,7 @@ def extract_objects(grid, background=None):
 
 
 
-def determine_background_color(task_data: Dict[str, Any], debug: bool = False) -> int | None:
+def determine_background_color(task_data: Dict[str, Any], debug: bool = True) -> int | None:
     """Analyze all training grids and return the dominant background color."""
     # Threshold percentage for determining a background color
     pixel_threshold_pct = 60
@@ -242,8 +242,10 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
     for v, _ in obj:
         color_counts[v] += 1
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
-    obj_id = f"{pair_id}_{in_or_out}_{hash(obj_000)}_{bounding_box[0]}_{bounding_box[1]}"
-    obj_num_ID = "objID : " + str(managerid.get_id("OBJshape", obj_000))
+    # obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}_{bounding_box[0]}_{bounding_box[1]}"
+    obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
+    # obj_num_ID = "objID_" + str(managerid.get_id("OBJshape", obj_000))
+    obj_sort_ID = managerid.get_id("OBJshape", obj_000)
     info = {
         "pair_id": pair_id,
         "in_or_out": in_or_out,
@@ -264,7 +266,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "width": width,
         "main_color": main_color,
         "obj_id": obj_id,
-        "obj_num_ID": obj_num_ID,
+        "obj_sort_ID": obj_sort_ID,
         "rotated_variants": [("rot_0", obj_00)] + [
             (f"rot_{d}", shift_to_origin(grid_to_object({90: rot90, 180: rot180, 270: rot270}[d](object_to_grid(obj_00)))))
             for d in (90, 180, 270)
@@ -340,7 +342,8 @@ def objects_to_bk_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, An
     for cat in ("input", "output"):
         for pair_id, objs in all_objects.get(cat, []):
             for idx, info in enumerate(objs):
-                obj_name = prolog_atom(info["obj_num_ID"]) or f"obj_{pair_id}_{idx}"
+                # obj_name = prolog_atom(info["obj_num_ID"]) or f"obj_{pair_id}_{idx}"
+                obj_name = prolog_atom(info["obj_id"])
                 lines.append(f"object({obj_name}).")
                 lines.append(f"belongs({obj_name},{cat}_{pair_id}).")
                 lines.append(f"x_min({obj_name},{info['left']}).")
@@ -349,13 +352,47 @@ def objects_to_bk_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, An
                 lines.append(f"height({obj_name},{info['height']}).")
                 lines.append(f"color({obj_name},{info['main_color']}).")
                 lines.append(f"size({obj_name},{info['size']}).")
+                lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
 
     return lines
 
 
+def group_bk_lines(lines: List[str]) -> List[str]:
+    """Group BK facts by predicate name for better readability."""
+    from collections import defaultdict
+    import re
+
+    bucket: Dict[str, List[str]] = defaultdict(list)
+    directives: List[str] = []
+
+    for ln in lines:
+        stripped = ln.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('%'):
+            continue
+        if stripped.startswith(':-'):
+            directives.append(ln)
+            continue
+        m = re.match(r'([a-zA-Z_][A-Za-z0-9_]*)\s*\(', stripped)
+        if m:
+            bucket[m.group(1)].append(ln)
+        else:
+            bucket[''].append(ln)
+
+    grouped: List[str] = directives.copy()
+    for pred in sorted(bucket):
+        if pred:
+            grouped.append(f"% === {pred} ===")
+        grouped.extend(bucket[pred])
+    return grouped
+
+
 def save_bk(lines: List[str], path: str) -> None:
+    grouped = group_bk_lines(lines)
     with open(path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(':- style_check(-discontiguous).\n')
+        f.write("\n".join(grouped))
 
 
 def generate_bias() -> str:
@@ -380,27 +417,31 @@ def generate_bias() -> str:
     return "\n".join(bias_lines)
 
 
-def grids_to_exs_lines(task_data: Dict[str, Any],
-                       background_color: int | None = None) -> List[str]:
-    """Convert all grids in the task to pixel facts lines and add pos examples."""
+def grids_to_pix_lines(task_data: Dict[str, Any],
+                      background_color: int | None = None) -> List[str]:
+    """Convert all grids in the task to pixel facts lines."""
     if background_color is None:
         background_color = determine_background_color(task_data)
 
-    lines: List[str] = []
-
-    # add a positive example for each pair id
-    for pair_id, _ in enumerate(task_data.get("train", [])):
-        lines.append(f"pos(target({pair_id})).")
+    pix_lines: List[str] = []
 
     for pair_id, pair in enumerate(task_data.get("train", [])):
         for kind in ("input", "output"):
             grid = pair[kind]
-            label = f"{pair_id}_{'in' if kind=='input' else 'out'}"
+            label = f"pairid{pair_id}_{'in' if kind=='input' else 'out'}"
             for i, row in enumerate(grid):
                 for j, color in enumerate(row):
                     if background_color is not None and color == background_color:
                         continue
-                    lines.append(f"pix({label},{i},{j},{color}).")
+                    pix_lines.append(f"pix({label},{i},{j},{color}).")
+    return pix_lines
+
+
+def grids_to_exs_lines(task_data: Dict[str, Any]) -> List[str]:
+    """Return positive example facts for each training pair."""
+    lines: List[str] = []
+    for pair_id, _ in enumerate(task_data.get("train", [])):
+        lines.append(f"pos(target({pair_id})).")
     return lines
 
 
@@ -419,14 +460,15 @@ def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str,
     background = determine_background_color(task_data)
     objs = extract_objects_from_task(task_data, background)
     bk_lines = objects_to_bk_lines(objs)
+    bk_lines.extend(grids_to_pix_lines(task_data, background))
     bias_content = generate_bias()
-    exs_lines = grids_to_exs_lines(task_data, background)
+    exs_lines = grids_to_exs_lines(task_data)
 
     bk_path = os.path.join(output_dir, "bk.pl")
     bias_path = os.path.join(output_dir, "bias.pl")
     exs_path = os.path.join(output_dir, "exs.pl")
 
-    save_lines(bk_lines, bk_path)
+    save_bk(bk_lines, bk_path)
     with open(bias_path, "w") as f:
         f.write(bias_content)
     save_lines(exs_lines, exs_path)
