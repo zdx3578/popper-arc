@@ -15,3 +15,8 @@ settings = Settings(kbpath='input_dir')
 prog, score, stats = learn_solution(settings)
 if prog != None:
     Settings.print_prog_score(prog, score)
+
+
+
+ SWI-Prolog 安装poppper要求的版本
+ 

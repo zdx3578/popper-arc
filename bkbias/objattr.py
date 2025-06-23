@@ -361,22 +361,99 @@ def save_bk(lines: List[str], path: str) -> None:
 def generate_bias() -> str:
     """Return a minimal bias string for the generated BK."""
     bias_lines = [
-        "head_pred(target/1).",
-        "body_pred(grid_size/3).",
-        "body_pred(color_value/1).",
-        "body_pred(object/1).",
-        "body_pred(belongs/2).",
-        "body_pred(x_min/2).",
-        "body_pred(y_min/2).",
-        "body_pred(width/2).",
-        "body_pred(height/2).",
-        "body_pred(color/2).",
-        "body_pred(size/2).",
+        "head_pred(target,1).",
+        "body_pred(grid_size,3).",
+        "body_pred(color_value,1).",
+        "body_pred(object,1).",
+        "body_pred(belongs,2).",
+        "body_pred(x_min,2).",
+        "body_pred(y_min,2).",
+        "body_pred(width,2).",
+        "body_pred(height,2).",
+        "body_pred(color,2).",
+        "body_pred(size,2).",
+        "body_pred(pix,4).",
         "max_vars(6).",
         "max_body(6).",
         "max_clauses(3).",
     ]
     return "\n".join(bias_lines)
+
+
+def grids_to_exs_lines(task_data: Dict[str, Any],
+                       background_color: int | None = None) -> List[str]:
+    """Convert all grids in the task to pixel facts lines and add pos examples."""
+    if background_color is None:
+        background_color = determine_background_color(task_data)
+
+    lines: List[str] = []
+
+    # add a positive example for each pair id
+    for pair_id, _ in enumerate(task_data.get("train", [])):
+        lines.append(f"pos(target({pair_id})).")
+
+    for pair_id, pair in enumerate(task_data.get("train", [])):
+        for kind in ("input", "output"):
+            grid = pair[kind]
+            label = f"{pair_id}_{'in' if kind=='input' else 'out'}"
+            for i, row in enumerate(grid):
+                for j, color in enumerate(row):
+                    if background_color is not None and color == background_color:
+                        continue
+                    lines.append(f"pix({label},{i},{j},{color}).")
+    return lines
+
+
+def save_lines(lines: List[str], path: str) -> None:
+    with open(path, "w") as f:
+        if lines:
+            f.write("\n".join(lines) + "\n")
+        else:
+            f.write("")
+
+
+def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str, str]:
+    """Generate BK, bias and exs files from a task JSON."""
+    os.makedirs(output_dir, exist_ok=True)
+    task_data = load_task(task_path)
+    background = determine_background_color(task_data)
+    objs = extract_objects_from_task(task_data, background)
+    bk_lines = objects_to_bk_lines(objs)
+    bias_content = generate_bias()
+    exs_lines = grids_to_exs_lines(task_data, background)
+
+    bk_path = os.path.join(output_dir, "bk.pl")
+    bias_path = os.path.join(output_dir, "bias.pl")
+    exs_path = os.path.join(output_dir, "exs.pl")
+
+    save_lines(bk_lines, bk_path)
+    with open(bias_path, "w") as f:
+        f.write(bias_content)
+    save_lines(exs_lines, exs_path)
+
+    return bk_path, bias_path, exs_path
+
+
+def run_popper_from_dir(kb_dir: str):
+    """Run Popper on the given directory containing bk.pl, bias.pl and exs.pl."""
+    import importlib.util  # Ensure importlib.util exists before importing popper
+    from popper.util import Settings
+    from popper.loop import learn_solution
+
+    settings = Settings(kbpath=kb_dir)
+    return learn_solution(settings)
+
+
+def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
+    """Create a temporary kb directory and run Popper with the given files."""
+    import shutil
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmpdir:
+        shutil.copy(bk_path, os.path.join(tmpdir, "bk.pl"))
+        shutil.copy(bias_path, os.path.join(tmpdir, "bias.pl"))
+        shutil.copy(exs_path, os.path.join(tmpdir, "exs.pl"))
+        return run_popper_from_dir(tmpdir)
 
 
 if __name__ == "__main__":
