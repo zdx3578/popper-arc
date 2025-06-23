@@ -456,25 +456,32 @@ def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
         return run_popper_from_dir(tmpdir)
 
 
+def run_popper_for_task(task_path: str, output_dir: str):
+    """Generate Popper input files for ``task_path`` and run Popper."""
+    bk, bias, exs = generate_files_from_task(task_path, output_dir)
+    return run_popper_from_dir(output_dir)
+
+
 if __name__ == "__main__":
-    import sys
-    task_path = sys.argv[1] if len(sys.argv) > 1 else "05a7bcf2.json"
-    if os.path.exists(task_path):
-        objs = run_extraction(task_path)
-        print(json.dumps(objs, indent=2, default=str))
+    import argparse
 
-        bk_lines = objects_to_bk_lines(objs)
-        bk_path = os.path.splitext(task_path)[0] + "_bk.pl"
-        save_bk(bk_lines, bk_path)
-        print(f"BK file saved to: {bk_path}")
-        with open(bk_path, "r") as f:
-            print(f.read())
+    parser = argparse.ArgumentParser(description="Generate Popper files and run the solver on an ARC task")
+    parser.add_argument("task", help="Path to the ARC task JSON file")
+    parser.add_argument("--out", default="popper_kb", help="Directory to store generated files")
+    args = parser.parse_args()
 
-        bias_content = generate_bias()
-        bias_path = os.path.splitext(task_path)[0] + "_bias.pl"
-        with open(bias_path, "w") as f:
-            f.write(bias_content)
-        print(f"Bias file saved to: {bias_path}")
-        print(bias_content)
-    else:
-        print(f"Task file {task_path} not found")
+    if not os.path.exists(args.task):
+        raise SystemExit(f"Task file {args.task} not found")
+
+    bk_path, bias_path, exs_path = generate_files_from_task(args.task, args.out)
+    print(f"BK, bias and EXS files saved to {args.out}")
+
+    try:
+        prog, score, stats = run_popper_from_dir(args.out)
+        if prog is not None:
+            print("Learned hypothesis:")
+            print(prog)
+        else:
+            print("Popper finished without finding a solution")
+    except Exception as e:
+        print(f"Popper run failed: {e}")

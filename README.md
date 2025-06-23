@@ -39,3 +39,11 @@ if prog is not None:
 ```
 
 This repository contains utilities in `bkbias/objattr.py` to generate the BK, bias and example files from an ARC task and run Popper programmatically.
+
+### Example: run Popper on a task
+
+```
+python -m bkbias.objattr oldcodeforref/arcMrule/popper/05a7bcf2.json --out tmpkb
+```
+
+The command above writes `bk.pl`, `bias.pl` and `exs.pl` under `tmpkb/` and then invokes Popper on them. If Popper finds a hypothesis it will be printed to the console.
