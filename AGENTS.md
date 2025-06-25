@@ -1,6 +1,8 @@
 
 这个项目是为了解决arc的ilp框架，非常简陋的框架，需要完善，参考的代码在目录: oldcodeforref/ 里面，
-现在只是实现了arc数据的读取，入口程序文件是mainpopperarc.py，希望你可以参考之前的oldcodeforref/ 代码来完善现在的代码
+现在只是实现了arc数据的读取，入口程序文件计划是是mainpopperarc.py，希望你可以参考之前的oldcodeforref/ 代码来完善现在的代码
+
+但是最近的改动代码入口都是：popper-arc/bkbias/objattr.py  现在的入口是 objattr.py  是现在最核心的文件。
 
 ilp框架： <https://github.com/logic-and-learning-lab/Popper>
 安装方法：pip install git+<https://github.com/logic-and-learning-lab/Popper@main>
@@ -19,4 +21,3 @@ if prog != None:
 
 
  SWI-Prolog 安装poppper要求的版本
- 

@@ -3,6 +3,8 @@ import json
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 
+from extendplugin.objholecount import count_object_holes
+
 
 class IdManager:
     """Simple ID manager for assigning incremental IDs per category."""
@@ -242,6 +244,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
     for v, _ in obj:
         color_counts[v] += 1
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
+    holes = count_object_holes(obj)
     # obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}_{bounding_box[0]}_{bounding_box[1]}"
     obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
     # obj_num_ID = "objID_" + str(managerid.get_id("OBJshape", obj_000))
@@ -265,6 +268,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "height": height,
         "width": width,
         "main_color": main_color,
+        "holes": holes,
         "obj_id": obj_id,
         "obj_sort_ID": obj_sort_ID,
         "rotated_variants": [("rot_0", obj_00)] + [
@@ -353,6 +357,7 @@ def objects_to_bk_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, An
                 lines.append(f"color({obj_name},{info['main_color']}).")
                 lines.append(f"size({obj_name},{info['size']}).")
                 lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
+                lines.append(f"holes({obj_name},{info['holes']}).")
 
     return lines
 
@@ -409,6 +414,7 @@ def generate_bias() -> str:
         "body_pred(height,2).",
         "body_pred(color,2).",
         "body_pred(size,2).",
+        "body_pred(holes,2).",
         "body_pred(pix,4).",
         "max_vars(6).",
         "max_body(6).",
@@ -437,11 +443,19 @@ def grids_to_pix_lines(task_data: Dict[str, Any],
     return pix_lines
 
 
-def grids_to_exs_lines(task_data: Dict[str, Any]) -> List[str]:
-    """Return positive example facts for each training pair."""
+def objects_to_exs_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
+    """Return positive examples describing input/output object mappings."""
     lines: List[str] = []
-    for pair_id, _ in enumerate(task_data.get("train", [])):
-        lines.append(f"pos(target({pair_id})).")
+    inputs = {pid: objs for pid, objs in all_objects.get("input", [])}
+    outputs = {pid: objs for pid, objs in all_objects.get("output", [])}
+
+    for pair_id in sorted(inputs):
+        in_names = [prolog_atom(info["obj_id"]) for info in inputs.get(pair_id, [])]
+        out_names = [prolog_atom(info["obj_id"]) for info in outputs.get(pair_id, [])]
+        in_list = "[" + ",".join(in_names) + "]"
+        out_list = "[" + ",".join(out_names) + "]"
+        lines.append(f"pos(target({in_list},{out_list})).")
+
     return lines
 
 
@@ -462,7 +476,7 @@ def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str,
     bk_lines = objects_to_bk_lines(objs)
     bk_lines.extend(grids_to_pix_lines(task_data, background))
     bias_content = generate_bias()
-    exs_lines = grids_to_exs_lines(task_data)
+    exs_lines = objects_to_exs_lines(objs)
 
     bk_path = os.path.join(output_dir, "bk.pl")
     bias_path = os.path.join(output_dir, "bias.pl")
