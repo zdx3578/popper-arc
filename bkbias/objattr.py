@@ -230,7 +230,8 @@ def determine_background_color(task_data: Dict[str, Any], debug: bool = True) ->
 
 
 def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[int, Tuple[int, int]]],
-                             grid_hw: Tuple[int, int], background: int | None = None) -> Dict[str, Any]:
+                             grid_hw: Tuple[int, int], background: int | None = None,
+                             obj_index: int | None = None) -> Dict[str, Any]:
     """Compute object attributes and return a dictionary."""
     obj_00 = shift_to_origin(obj)
     obj_000 = shift_to_origin(obj, preserve_colors=False)
@@ -245,8 +246,10 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         color_counts[v] += 1
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
     holes = count_object_holes(obj)
-    # obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}_{bounding_box[0]}_{bounding_box[1]}"
-    obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
+    if obj_index is None:
+        obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
+    else:
+        obj_id = f"o{obj_index}"
     # obj_num_ID = "objID_" + str(managerid.get_id("OBJshape", obj_000))
     obj_sort_ID = managerid.get_id("OBJshape", obj_000)
     info = {
@@ -288,7 +291,10 @@ def extract_object_infos_from_grid(pair_id: int, in_or_out: str, grid: List[List
     """Extract objects and attributes from a single grid."""
     objects = extract_objects(grid, background_color)
     h, w = len(grid), len(grid[0])
-    return [create_weighted_obj_info(pair_id, in_or_out, obj, (h, w), background_color) for obj in objects]
+    infos: List[Dict[str, Any]] = []
+    for idx, obj in enumerate(objects):
+        infos.append(create_weighted_obj_info(pair_id, in_or_out, obj, (h, w), background_color, idx))
+    return infos
 
 
 def extract_objects_from_task(task_data: Dict[str, Any], background_color: int = None,
@@ -323,41 +329,52 @@ def prolog_atom(text: str) -> str:
     return ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in text)
 
 
-def objects_to_bk_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
-    """Convert extracted object infos into simple Popper background facts."""
+def objects_to_bk_lines(task_data: Dict[str, Any],
+                        all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
+    """Convert extracted object infos into Popper background facts."""
     lines: List[str] = []
 
-    # gather grid sizes
-    seen_pairs: Dict[Tuple[str, int], Tuple[int, int]] = {}
-    color_set = set()
-    for cat in ("input", "output"):
-        for pair_id, objs in all_objects.get(cat, []):
-            if objs:
-                seen_pairs[(cat, pair_id)] = objs[0]["grid_hw"]
-            for info in objs:
-                color_set.add(info["main_color"])
+    pair_total = len(task_data.get("train", []))
+    max_dim = 0
+    colors = set()
+    for pair in task_data.get("train", []):
+        for grid in (pair["input"], pair["output"]):
+            if not grid:
+                continue
+            max_dim = max(max_dim, len(grid), len(grid[0]))
+            colors.update({c for row in grid for c in row})
 
-    for (cat, pair_id), (h, w) in seen_pairs.items():
-        lines.append(f"grid_size({cat}_{pair_id},{h},{w}).")
+    max_dim = min(max_dim, 30)
 
-    for color in sorted(color_set):
-        lines.append(f"color_value({color}).")
+    # constants
+    for pid in range(pair_total):
+        lines.append(f"constant(p{pid},pair).")
+    lines.append("constant(in,io).")
+    lines.append("constant(out,io).")
+    for n in range(max_dim):
+        lines.append(f"constant({n},coord).")
+    for c in range(10):
+        lines.append(f"constant({c},color).")
 
-    for cat in ("input", "output"):
-        for pair_id, objs in all_objects.get(cat, []):
-            for idx, info in enumerate(objs):
-                # obj_name = prolog_atom(info["obj_num_ID"]) or f"obj_{pair_id}_{idx}"
-                obj_name = prolog_atom(info["obj_id"])
-                lines.append(f"object({obj_name}).")
-                lines.append(f"belongs({obj_name},{cat}_{pair_id}).")
-                lines.append(f"x_min({obj_name},{info['left']}).")
-                lines.append(f"y_min({obj_name},{info['top']}).")
-                lines.append(f"width({obj_name},{info['width']}).")
-                lines.append(f"height({obj_name},{info['height']}).")
-                lines.append(f"color({obj_name},{info['main_color']}).")
-                lines.append(f"size({obj_name},{info['size']}).")
-                lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
-                lines.append(f"holes({obj_name},{info['holes']}).")
+    hole_vals: set[int] = set()
+    obj_ids: set[str] = set()
+
+    for pair_id, objs in all_objects.get("input", []):
+        for info in objs:
+            obj_ids.add(info["obj_id"])
+            hole_vals.add(info["holes"])
+    for h in sorted(hole_vals):
+        lines.append(f"constant({h},int).")
+    for oid in sorted(obj_ids):
+        lines.append(f"constant({oid},obj).")
+
+    # in-grid pixel-object relations and hole counts
+    for pair_id, objs in all_objects.get("input", []):
+        for info in objs:
+            oid = info["obj_id"]
+            for _, (r, c) in info["obj"]:
+                lines.append(f"inbelongs(p{pair_id},in,{oid},{r},{c}).")
+            lines.append(f"objholes(p{pair_id},in,{oid},{info['holes']}).")
 
     return lines
 
@@ -401,24 +418,22 @@ def save_bk(lines: List[str], path: str) -> None:
 
 
 def generate_bias() -> str:
-    """Return a minimal bias string for the generated BK."""
+    """Return Popper bias string for predicting output pixels."""
     bias_lines = [
-        "head_pred(target,1).",
-        "body_pred(grid_size,3).",
-        "body_pred(color_value,1).",
-        "body_pred(object,1).",
-        "body_pred(belongs,2).",
-        "body_pred(x_min,2).",
-        "body_pred(y_min,2).",
-        "body_pred(width,2).",
-        "body_pred(height,2).",
-        "body_pred(color,2).",
-        "body_pred(size,2).",
-        "body_pred(holes,2).",
-        "body_pred(pix,4).",
+        "head_pred(outpix,5).",
+        "body_pred(inbelongs,5).",
+        "body_pred(objholes,4).",
+        "body_pred(hole2color,2).",
+        "type(pair). type(io). type(obj).",
+        "type(coord). type(color). type(int).",
+        "type(outpix,(pair,io,coord,coord,color)).",
+        "type(inbelongs,(pair,io,obj,coord,coord)).",
+        "type(objholes,(pair,io,obj,int)).",
+        "type(hole2color,(int,color)).",
+        "max_body(3).",
         "max_vars(6).",
-        "max_body(6).",
-        "max_clauses(3).",
+        "max_clauses(1).",
+        "non_datalog.",
     ]
     return "\n".join(bias_lines)
 
@@ -459,6 +474,22 @@ def objects_to_exs_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, A
     return lines
 
 
+def outpix_examples(task_data: Dict[str, Any], background_color: int | None = None) -> List[str]:
+    """Generate positive examples for output pixels."""
+    if background_color is None:
+        background_color = determine_background_color(task_data)
+
+    lines: List[str] = []
+    for pair_id, pair in enumerate(task_data.get("train", [])):
+        grid = pair["output"]
+        for r, row in enumerate(grid):
+            for c, color in enumerate(row):
+                if background_color is not None and color == background_color:
+                    continue
+                lines.append(f"pos(outpix(p{pair_id},out,{r},{c},{color})).")
+    return lines
+
+
 def save_lines(lines: List[str], path: str) -> None:
     with open(path, "w") as f:
         if lines:
@@ -473,10 +504,9 @@ def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str,
     task_data = load_task(task_path)
     background = determine_background_color(task_data)
     objs = extract_objects_from_task(task_data, background)
-    bk_lines = objects_to_bk_lines(objs)
-    bk_lines.extend(grids_to_pix_lines(task_data, background))
+    bk_lines = objects_to_bk_lines(task_data, objs)
     bias_content = generate_bias()
-    exs_lines = objects_to_exs_lines(objs)
+    exs_lines = outpix_examples(task_data, background)
 
     bk_path = os.path.join(output_dir, "bk.pl")
     bias_path = os.path.join(output_dir, "bias.pl")
