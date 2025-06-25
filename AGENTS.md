@@ -6,6 +6,7 @@
 
 ilp框架： <https://github.com/logic-and-learning-lab/Popper>
 安装方法：pip install git+<https://github.com/logic-and-learning-lab/Popper@main>
+   popper 请安装好
 
 Library usage
 You can import Popper and use it in your Python code like so:
@@ -21,3 +22,5 @@ if prog != None:
 
 
  SWI-Prolog 安装poppper要求的版本
+
+ popper 请安装好

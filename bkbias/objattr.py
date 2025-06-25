@@ -2,7 +2,7 @@ import os
 import json
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
-
+import traceback
 from extendplugin.objholecount import count_object_holes
 
 
@@ -249,9 +249,8 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
     if obj_index is None:
         obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
     else:
-        obj_id = f"o{obj_index}"
-    # obj_num_ID = "objID_" + str(managerid.get_id("OBJshape", obj_000))
-    obj_sort_ID = managerid.get_id("OBJshape", obj_000)
+        obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj)}"
+    obj_shape_ID = managerid.get_id("OBJshape", obj_000)
     info = {
         "pair_id": pair_id,
         "in_or_out": in_or_out,
@@ -273,7 +272,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "main_color": main_color,
         "holes": holes,
         "obj_id": obj_id,
-        "obj_sort_ID": obj_sort_ID,
+        "obj_shape_ID": obj_shape_ID,
         "rotated_variants": [("rot_0", obj_00)] + [
             (f"rot_{d}", shift_to_origin(grid_to_object({90: rot90, 180: rot180, 270: rot270}[d](object_to_grid(obj_00)))))
             for d in (90, 180, 270)
@@ -356,15 +355,13 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
     for c in range(10):
         lines.append(f"constant({c},color).")
 
-    hole_vals: set[int] = set()
     obj_ids: set[str] = set()
 
     for pair_id, objs in all_objects.get("input", []):
         for info in objs:
             obj_ids.add(info["obj_id"])
-            hole_vals.add(info["holes"])
-    for h in sorted(hole_vals):
-        lines.append(f"constant({h},int).")
+    for n in range(10):
+        lines.append(f"constant({n},int).")
     for oid in sorted(obj_ids):
         lines.append(f"constant({oid},obj).")
 
@@ -374,7 +371,11 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
             oid = info["obj_id"]
             for _, (r, c) in info["obj"]:
                 lines.append(f"inbelongs(p{pair_id},in,{oid},{r},{c}).")
-            lines.append(f"objholes(p{pair_id},in,{oid},{info['holes']}).")
+
+            if info['holes'] > 0:
+                # lines.append(f"hashole(p{pair_id},in,{oid}).")
+                lines.append(f"objholes(p{pair_id},in,{oid},{info['holes']}).")
+            # lines.append(f"color({oid},{info['main_color']}).")
 
     return lines
 
@@ -423,16 +424,18 @@ def generate_bias() -> str:
         "head_pred(outpix,5).",
         "body_pred(inbelongs,5).",
         "body_pred(objholes,4).",
-        "body_pred(hole2color,2).",
+
+
         "type(pair). type(io). type(obj).",
         "type(coord). type(color). type(int).",
         "type(outpix,(pair,io,coord,coord,color)).",
         "type(inbelongs,(pair,io,obj,coord,coord)).",
         "type(objholes,(pair,io,obj,int)).",
-        "type(hole2color,(int,color)).",
-        "max_body(3).",
-        "max_vars(6).",
-        "max_clauses(1).",
+
+
+        "max_body(5).",
+        "max_vars(7).",
+        "max_clauses(11).",
         "non_datalog.",
     ]
     return "\n".join(bias_lines)
@@ -526,7 +529,18 @@ def run_popper_from_dir(kb_dir: str):
     from popper.util import Settings
     from popper.loop import learn_solution
 
-    settings = Settings(kbpath=kb_dir)
+    # settings = Settings(kbpath=kb_dir)
+    settings = Settings(
+        kbpath=kb_dir,     # 必需：ARC 任务目录
+        debug=True,        # 打开最详细的日志
+        quiet=False,       # 允许输出
+        show_stats=True,   # 结束时打印统计
+        timeout=600,       # 整体超时 10 分钟
+        eval_timeout=0.01, # 每条 Prolog 调用 10ms
+        solver="rc2",      # 或 "wmaxcdcl" 等
+        anytime_solver="wmaxcdcl", # 若你想跑 anytime
+        anytime_timeout=15
+    )
     return learn_solution(settings)
 
 
@@ -556,6 +570,9 @@ if __name__ == "__main__":
     parser.add_argument("--out", default="popper_kb", help="Directory to store generated files")
     args = parser.parse_args()
 
+
+    
+
     if not os.path.exists(args.task):
         raise SystemExit(f"Task file {args.task} not found")
 
@@ -570,4 +587,6 @@ if __name__ == "__main__":
         else:
             print("Popper finished without finding a solution")
     except Exception as e:
+        traceback.print_exc()
         print(f"Popper run failed: {e}")
+        traceback.print_exc()
