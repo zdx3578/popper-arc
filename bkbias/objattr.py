@@ -1,5 +1,6 @@
 import os
 import json
+import random
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 import traceback
@@ -246,10 +247,18 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         color_counts[v] += 1
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
     holes = count_object_holes(obj)
+    # holemapping = {}
+    hashid = hash(obj_000)
+    # print(hashid)
+    abshashid = abs(hashid)
+    # print(abshashid)
+
+
     if obj_index is None:
-        obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj_000)}"
+        obj_id = f"pairid{pair_id}{in_or_out}{abshashid}"
     else:
-        obj_id = f"pairid{pair_id}_{in_or_out}_{hash(obj)}"
+        # obj_id = f"pairid{pair_id}{in_or_out}{obj_index}"
+        obj_id = f"pairid{pair_id}{in_or_out}{abshashid}"
     obj_shape_ID = managerid.get_id("OBJshape", obj_000)
     info = {
         "pair_id": pair_id,
@@ -281,6 +290,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "obj_weight": 0,
         "is_part_of": [],
         "has_parts": [],
+        # "mapping"
     }
     return info
 
@@ -343,13 +353,12 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
             max_dim = max(max_dim, len(grid), len(grid[0]))
             colors.update({c for row in grid for c in row})
 
-    max_dim = min(max_dim, 30)
+    # max_dim = min(max_dim, 30)
+    max_dim = 30
 
     # constants
     for pid in range(pair_total):
         lines.append(f"constant(p{pid},pair).")
-    lines.append("constant(in,io).")
-    lines.append("constant(out,io).")
     for n in range(max_dim):
         lines.append(f"constant({n},coord).")
     for c in range(10):
@@ -370,11 +379,11 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
         for info in objs:
             oid = info["obj_id"]
             for _, (r, c) in info["obj"]:
-                lines.append(f"inbelongs(p{pair_id},in,{oid},{r},{c}).")
+                lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
 
             if info['holes'] > 0:
-                # lines.append(f"hashole(p{pair_id},in,{oid}).")
-                lines.append(f"objholes(p{pair_id},in,{oid},{info['holes']}).")
+                # lines.append(f"hashole(p{pair_id},{oid}).")
+                lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
             # lines.append(f"color({oid},{info['main_color']}).")
 
     return lines
@@ -421,22 +430,22 @@ def save_bk(lines: List[str], path: str) -> None:
 def generate_bias() -> str:
     """Return Popper bias string for predicting output pixels."""
     bias_lines = [
-        "head_pred(outpix,5).",
-        "body_pred(inbelongs,5).",
-        "body_pred(objholes,4).",
+        "head_pred(outpix,4).",
+        "body_pred(inbelongs,4).",
+        "body_pred(objholes,3).",
 
 
-        "type(pair). type(io). type(obj).",
+        "type(pair). type(obj).",
         "type(coord). type(color). type(int).",
-        "type(outpix,(pair,io,coord,coord,color)).",
-        "type(inbelongs,(pair,io,obj,coord,coord)).",
-        "type(objholes,(pair,io,obj,int)).",
+        "type(outpix,(pair,coord,coord,color)).",
+        "type(inbelongs,(pair,obj,coord,coord)).",
+        "type(objholes,(pair,obj,int)).",
 
 
-        "max_body(5).",
+        "max_body(4).",
         "max_vars(7).",
         "max_clauses(11).",
-        "non_datalog.",
+        # "non_datalog.",
     ]
     return "\n".join(bias_lines)
 
@@ -477,8 +486,40 @@ def objects_to_exs_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, A
     return lines
 
 
-def outpix_examples(task_data: Dict[str, Any], background_color: int | None = None) -> List[str]:
-    """Generate positive examples for output pixels."""
+def nonbg_pixels(grid: List[List[int]], bg_color: int | None) -> List[Tuple[Tuple[int, int], int]]:
+    """Return coordinates and colors of pixels not equal to ``bg_color``."""
+    pixels = []
+    for r, row in enumerate(grid):
+        for c, color in enumerate(row):
+            if bg_color is None or color != bg_color:
+                pixels.append(((r, c), color))
+    return pixels
+
+
+def add_negatives(pair_id: int, out_grid: List[List[int]], bg_color: int | None, exs: List[str], k_factor: int = 2) -> None:
+    """Append negative outpix examples to ``exs``."""
+    pos_coords = {(x, y) for (x, y), _ in nonbg_pixels(out_grid, bg_color)}
+    h = len(out_grid)
+    w = len(out_grid[0]) if out_grid else 0
+    all_coords = [(x, y) for x in range(h) for y in range(w)]
+    random.shuffle(all_coords)
+
+    added = 0
+    target = k_factor * len(pos_coords)
+    for (x, y) in all_coords:
+        if (x, y) in pos_coords:
+            continue
+        wrong_c = random.randint(0, 9)
+        if wrong_c == bg_color:
+            continue
+        exs.append(f"neg(outpix(p{pair_id},{x},{y},{wrong_c})).")
+        added += 1
+        if added >= target:
+            break
+
+
+def outpix_examples(task_data: Dict[str, Any], background_color: int | None = None, neg_factor: int = 2) -> List[str]:
+    """Generate positive and negative examples for output pixels."""
     if background_color is None:
         background_color = determine_background_color(task_data)
 
@@ -489,7 +530,10 @@ def outpix_examples(task_data: Dict[str, Any], background_color: int | None = No
             for c, color in enumerate(row):
                 if background_color is not None and color == background_color:
                     continue
-                lines.append(f"pos(outpix(p{pair_id},out,{r},{c},{color})).")
+                lines.append(f"pos(outpix(p{pair_id},{r},{c},{color})).")
+
+        add_negatives(pair_id, grid, background_color, lines, neg_factor)
+
     return lines
 
 
@@ -509,7 +553,7 @@ def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str,
     objs = extract_objects_from_task(task_data, background)
     bk_lines = objects_to_bk_lines(task_data, objs)
     bias_content = generate_bias()
-    exs_lines = outpix_examples(task_data, background)
+    exs_lines = outpix_examples(task_data, background, neg_factor=3)
 
     bk_path = os.path.join(output_dir, "bk.pl")
     bias_path = os.path.join(output_dir, "bias.pl")
@@ -571,7 +615,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
 
-    
+
 
     if not os.path.exists(args.task):
         raise SystemExit(f"Task file {args.task} not found")
