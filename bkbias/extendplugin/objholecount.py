@@ -56,10 +56,17 @@ def count_holes(grid: Grid, comp: Iterable[Position]) -> int:
 
 def count_object_holes(obj: Iterable[Tuple[int, Position]]) -> int:
     """Return the number of holes inside an object."""
-    from objattr import shift_to_origin, object_to_grid
+    from objattr import shift_to_origin
 
     obj_origin = shift_to_origin(obj)
-    grid = object_to_grid(obj_origin)
-    bin_grid: Grid = [[1 if v != 0 else 0 for v in row] for row in grid]
-    comp = [(r, c) for r, row in enumerate(bin_grid) for c, v in enumerate(row) if v]
-    return count_holes(bin_grid, comp)
+    coords = [(r, c) for _, (r, c) in obj_origin]
+    if not coords:
+        return 0
+
+    max_r = max(r for r, _ in coords)
+    max_c = max(c for _, c in coords)
+    bin_grid: Grid = [[0] * (max_c + 1) for _ in range(max_r + 1)]
+    for r, c in coords:
+        bin_grid[r][c] = 1
+
+    return count_holes(bin_grid, coords)

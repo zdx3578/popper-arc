@@ -6,6 +6,20 @@ from typing import List, Tuple, Dict, Any, FrozenSet
 import traceback
 from extendplugin.objholecount import count_object_holes
 
+# Mapping from ARC color numbers to emoji for debugging displays
+COLOR_MAP = {
+    0: "⬛",   # Black
+    1: "🟦",   # Blue
+    2: "🟥",   # Red
+    3: "🟩",   # Green
+    4: "🟨",   # Yellow
+    5: "🟫",   # Brown / Gray
+    6: "🟪",   # Purple
+    7: "🟠",   # Orange
+    8: "🔹",   # Light Blue
+    9: "🔴",   # Dark Red
+}
+
 
 class IdManager:
     """Simple ID manager for assigning incremental IDs per category."""
@@ -338,10 +352,69 @@ def prolog_atom(text: str) -> str:
     return ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in text)
 
 
+def display_object(obj: FrozenSet[Tuple[int, Tuple[int, int]]]) -> None:
+    """Print the object's shape using ``COLOR_MAP`` characters."""
+    obj_origin = shift_to_origin(obj)
+    if not obj_origin:
+        print("(empty object)")
+        return
+
+    max_r = max(r for _, (r, _) in obj_origin)
+    max_c = max(c for _, (_, c) in obj_origin)
+    grid = [[' ' for _ in range(max_c + 1)] for _ in range(max_r + 1)]
+    for color, (r, c) in obj_origin:
+        grid[r][c] = COLOR_MAP.get(color, str(color))
+
+    border = "+" + "-" * (max_c + 1) + "+"
+    print(border)
+    for row in grid:
+        print("|" + ''.join(row) + "|")
+    print(border)
+
+
+def _find_matching_output_color(in_obj: FrozenSet[Tuple[int, Tuple[int, int]]],
+                                out_objs: List[FrozenSet[Tuple[int, Tuple[int, int]]]]) -> int | None:
+    """Return the main color of the output object at the same coordinates as ``in_obj``."""
+    in_coords = {(r, c) for _, (r, c) in in_obj}
+    for out_obj in out_objs:
+        out_coords = {(r, c) for _, (r, c) in out_obj}
+        if out_coords == in_coords:
+            color_counts: Dict[int, int] = defaultdict(int)
+            for v, _ in out_obj:
+                color_counts[v] += 1
+            return max(color_counts.items(), key=lambda x: x[1])[0]
+    return None
+
+
+def compute_hole_color_mapping(task_data: Dict[str, Any], debug: bool = False) -> Dict[int, int]:
+    """Return mapping from hole count to output color based on identical objects."""
+    mapping: Dict[int, int] = {}
+    background = determine_background_color(task_data)
+    for pair_id, pair in enumerate(task_data.get("train", [])):
+        in_grid = pair["input"]
+        out_grid = pair["output"]
+        in_objs = extract_objects(in_grid, background)
+        out_objs = extract_objects(out_grid, background)
+        for in_obj in in_objs:
+            col = _find_matching_output_color(in_obj, out_objs)
+            if col is None:
+                continue
+            holes = count_object_holes(in_obj)
+            if holes not in mapping:
+                mapping[holes] = col
+                if debug:
+                    print(f"pair {pair_id}: holes={holes} -> color {col}")
+                    display_object(in_obj)
+    if debug:
+        print("hole-color mapping:", mapping)
+    return mapping
+
+
 def objects_to_bk_lines(task_data: Dict[str, Any],
                         all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
     """Convert extracted object infos into Popper background facts."""
     lines: List[str] = []
+    hole_color_map = compute_hole_color_mapping(task_data, debug=False)
 
     pair_total = len(task_data.get("train", []))
     max_dim = 0
@@ -362,7 +435,8 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
     for n in range(max_dim):
         lines.append(f"constant({n},coord).")
     for c in range(10):
-        lines.append(f"constant({c},color).")
+        # lines.append(f"constant({c},color).")
+        lines.append(f"constant(color, {c}).")
 
     obj_ids: set[str] = set()
 
@@ -370,9 +444,19 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
         for info in objs:
             obj_ids.add(info["obj_id"])
     for n in range(10):
-        lines.append(f"constant({n},int).")
+        # lines.append(f"constant({n},int).")
+        lines.append(f"constant(int, {n}).")
     for oid in sorted(obj_ids):
         lines.append(f"constant({oid},obj).")
+
+    #! fron pred invetion
+    # # hole to color mapping constants
+    # for h, c in hole_color_map.items():
+    #     lines.append(f"hole2color({h},{c}).")
+    #     print(f"hole2color({h},{c}).")
+    #     lines.append(f"constant({h},int).")
+    #     # lines.append(f"constant({c},color).")
+    #     # lines.append(f"constant(color, {c}).")
 
     # in-grid pixel-object relations and hole counts
     for pair_id, objs in all_objects.get("input", []):
@@ -430,21 +514,25 @@ def save_bk(lines: List[str], path: str) -> None:
 def generate_bias() -> str:
     """Return Popper bias string for predicting output pixels."""
     bias_lines = [
+        "enable_pi.",
         "head_pred(outpix,4).",
         "body_pred(inbelongs,4).",
         "body_pred(objholes,3).",
-
+        # "body_pred(hole2color,2).",
+        "invent_pred(hole2color,(int,color))."
+        "max_inv_preds(1).",
 
         "type(pair). type(obj).",
         "type(coord). type(color). type(int).",
         "type(outpix,(pair,coord,coord,color)).",
         "type(inbelongs,(pair,obj,coord,coord)).",
         "type(objholes,(pair,obj,int)).",
+        # "type(hole2color,(int,color)).",
 
 
-        "max_body(4).",
+        "max_body(3).",
         "max_vars(7).",
-        "max_clauses(11).",
+        "max_clauses(10).",
         # "non_datalog.",
     ]
     return "\n".join(bias_lines)
@@ -524,6 +612,8 @@ def outpix_examples(task_data: Dict[str, Any], background_color: int | None = No
         background_color = determine_background_color(task_data)
 
     lines: List[str] = []
+    lines.append(f":- discontiguous neg/1.")
+    lines.append(f":- discontiguous pos/1.")
     for pair_id, pair in enumerate(task_data.get("train", [])):
         grid = pair["output"]
         for r, row in enumerate(grid):
@@ -577,12 +667,14 @@ def run_popper_from_dir(kb_dir: str):
     settings = Settings(
         kbpath=kb_dir,     # 必需：ARC 任务目录
         debug=True,        # 打开最详细的日志
+        show_stats = True,
+        noisy=True ,
         quiet=False,       # 允许输出
-        show_stats=True,   # 结束时打印统计
+        # show_stats=True,   # 结束时打印统计
         timeout=600,       # 整体超时 10 分钟
         eval_timeout=0.01, # 每条 Prolog 调用 10ms
         solver="rc2",      # 或 "wmaxcdcl" 等
-        anytime_solver="wmaxcdcl", # 若你想跑 anytime
+        # anytime_solver="wmaxcdcl", # 若你想跑 anytime
         anytime_timeout=15
     )
     return learn_solution(settings)
