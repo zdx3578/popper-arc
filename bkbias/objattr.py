@@ -410,9 +410,26 @@ def compute_hole_color_mapping(task_data: Dict[str, Any], debug: bool = False) -
     return mapping
 
 
-def objects_to_bk_lines(task_data: Dict[str, Any],
-                        all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
-    """Convert extracted object infos into Popper background facts."""
+def objects_to_bk_lines(
+    task_data: Dict[str, Any],
+    all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]],
+    include_pixels: bool = True,
+    *,
+    enable_pi: bool = False,
+) -> List[str]:
+    """Convert extracted object infos into Popper background facts.
+
+    Parameters
+    ----------
+    task_data : Dict[str, Any]
+        The loaded ARC task.
+    all_objects : Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]
+        Objects extracted from the task.
+    include_pixels : bool, optional
+        If ``True`` (default) include ``inbelongs/4`` pixel facts mapping
+        objects to their coordinates.  When ``False`` these facts are
+        omitted, producing a purely object level BK.
+    """
     lines: List[str] = []
     hole_color_map = compute_hole_color_mapping(task_data, debug=False)
 
@@ -449,26 +466,23 @@ def objects_to_bk_lines(task_data: Dict[str, Any],
     for oid in sorted(obj_ids):
         lines.append(f"constant({oid},obj).")
 
-    #! fron pred invetion
-    # # hole to color mapping constants
-    # for h, c in hole_color_map.items():
-    #     lines.append(f"hole2color({h},{c}).")
-    #     print(f"hole2color({h},{c}).")
-    #     lines.append(f"constant({h},int).")
-    #     # lines.append(f"constant({c},color).")
-    #     # lines.append(f"constant(color, {c}).")
+    # Optional invented predicate facts
+    if enable_pi:
+        for h, c in hole_color_map.items():
+            lines.append(f"hole2color({h},{c}).")
+            lines.append(f"constant(int, {h}).")
+            # lines.append(f"constant(color, {c}).")
 
     # in-grid pixel-object relations and hole counts
     for pair_id, objs in all_objects.get("input", []):
         for info in objs:
             oid = info["obj_id"]
-            for _, (r, c) in info["obj"]:
-                lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
+            if include_pixels:
+                for _, (r, c) in info["obj"]:
+                    lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
 
             if info['holes'] > 0:
-                # lines.append(f"hashole(p{pair_id},{oid}).")
                 lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
-            # lines.append(f"color({oid},{info['main_color']}).")
 
     return lines
 
@@ -511,31 +525,39 @@ def save_bk(lines: List[str], path: str) -> None:
         f.write("\n".join(grouped))
 
 
-def generate_bias() -> str:
+def generate_bias(enable_pi: bool = False) -> str:
     """Return Popper bias string for predicting output pixels."""
-    bias_lines = [
-        "enable_pi.",
-        "head_pred(outpix,4).",
-        "body_pred(inbelongs,4).",
-        "body_pred(objholes,3).",
-        # "body_pred(hole2color,2).",
-        "invent_pred(hole2color,(int,color))."
-        "max_inv_preds(1).",
+    bias_lines: List[str] = []
 
-        "type(pair). type(obj).",
-        "type(coord). type(color). type(int).",
-        "type(outpix,(pair,coord,coord,color)).",
-        "type(inbelongs,(pair,obj,coord,coord)).",
-        "type(objholes,(pair,obj,int)).",
-        # "type(hole2color,(int,color)).",
+    if enable_pi:
+        bias_lines.extend(
+            [
+                "enable_pi.",
+                "body_pred(hole2color,2).",
+                "invent_pred(hole2color,(int,color)).",
+                "max_inv_preds(1).",
+                "type(hole2color,(int,color)).",
+            ]
+        )
 
+    bias_lines.extend(
+        [
+            "head_pred(outpix,4).",
+            "body_pred(inbelongs,4).",
+            "body_pred(objholes,3).",
+            "type(pair). type(obj).",
+            "type(coord). type(color). type(int).",
+            "type(outpix,(pair,coord,coord,color)).",
+            "type(inbelongs,(pair,obj,coord,coord)).",
+            "type(objholes,(pair,obj,int)).",
+            "max_body(3).",
+            "max_vars(7).",
+            "max_clauses(10).",
+        ]
+    )
 
-        "max_body(3).",
-        "max_vars(7).",
-        "max_clauses(10).",
-        # "non_datalog.",
-    ]
     return "\n".join(bias_lines)
+
 
 
 def grids_to_pix_lines(task_data: Dict[str, Any],
@@ -635,15 +657,57 @@ def save_lines(lines: List[str], path: str) -> None:
             f.write("")
 
 
-def generate_files_from_task(task_path: str, output_dir: str) -> Tuple[str, str, str]:
-    """Generate BK, bias and exs files from a task JSON."""
+def generate_files_from_task(
+    task_path: str,
+    output_dir: str,
+    *,
+    use_pixels: bool = True,
+    bk_use_pixels: bool | None = None,
+    exs_use_pixels: bool | None = None,
+    enable_pi: bool = False,
+) -> Tuple[str, str, str]:
+    """Generate BK, bias and exs files from a task JSON.
+
+    Parameters
+    ----------
+    task_path : str
+        Path to the ARC JSON task.
+    output_dir : str
+        Directory where ``bk.pl``, ``bias.pl`` and ``exs.pl`` will be written.
+    use_pixels : bool, optional
+        Global representation flag.  ``True`` (default) means pixel based
+        representation, ``False`` means object based.
+    bk_use_pixels : bool, optional
+        Override for the BK representation.  If ``None`` the global flag is
+        used.
+    exs_use_pixels : bool, optional
+        Override for the EXS representation.  If ``None`` the global flag is
+        used.
+    enable_pi : bool, optional
+        If ``True`` include facts and bias declarations for the invented
+        ``hole2color/2`` predicate.
+    """
     os.makedirs(output_dir, exist_ok=True)
     task_data = load_task(task_path)
     background = determine_background_color(task_data)
     objs = extract_objects_from_task(task_data, background)
-    bk_lines = objects_to_bk_lines(task_data, objs)
-    bias_content = generate_bias()
-    exs_lines = outpix_examples(task_data, background, neg_factor=3)
+
+    if bk_use_pixels is None:
+        bk_use_pixels = use_pixels
+    if exs_use_pixels is None:
+        exs_use_pixels = use_pixels
+
+    bk_lines = objects_to_bk_lines(
+        task_data,
+        objs,
+        include_pixels=bk_use_pixels,
+        enable_pi=enable_pi,
+    )
+    bias_content = generate_bias(enable_pi=enable_pi)
+    if exs_use_pixels:
+        exs_lines = outpix_examples(task_data, background, neg_factor=3)
+    else:
+        exs_lines = objects_to_exs_lines(objs)
 
     bk_path = os.path.join(output_dir, "bk.pl")
     bias_path = os.path.join(output_dir, "bias.pl")
@@ -692,9 +756,24 @@ def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
         return run_popper_from_dir(tmpdir)
 
 
-def run_popper_for_task(task_path: str, output_dir: str):
+def run_popper_for_task(
+    task_path: str,
+    output_dir: str,
+    *,
+    use_pixels: bool = True,
+    bk_use_pixels: bool | None = None,
+    exs_use_pixels: bool | None = None,
+    enable_pi: bool = False,
+):
     """Generate Popper input files for ``task_path`` and run Popper."""
-    bk, bias, exs = generate_files_from_task(task_path, output_dir)
+    bk, bias, exs = generate_files_from_task(
+        task_path,
+        output_dir,
+        use_pixels=use_pixels,
+        bk_use_pixels=bk_use_pixels,
+        exs_use_pixels=exs_use_pixels,
+        enable_pi=enable_pi,
+    )
     return run_popper_from_dir(output_dir)
 
 
@@ -704,6 +783,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate Popper files and run the solver on an ARC task")
     parser.add_argument("task", help="Path to the ARC task JSON file")
     parser.add_argument("--out", default="popper_kb", help="Directory to store generated files")
+    parser.add_argument(
+        "--repr",
+        choices=["pixels", "objects"],
+        default="pixels",
+        help="Global representation (pixels or objects).",
+    )
+    parser.add_argument(
+        "--bk-repr",
+        choices=["pixels", "objects"],
+        default=None,
+        help="Override BK representation",
+    )
+    parser.add_argument(
+        "--exs-repr",
+        choices=["pixels", "objects"],
+        default=None,
+        help="Override EXS representation",
+    )
+    parser.add_argument(
+        "--enable-pi",
+        action="store_true",
+        help="Enable predicate invention (hole2color).",
+    )
     args = parser.parse_args()
 
 
@@ -712,7 +814,18 @@ if __name__ == "__main__":
     if not os.path.exists(args.task):
         raise SystemExit(f"Task file {args.task} not found")
 
-    bk_path, bias_path, exs_path = generate_files_from_task(args.task, args.out)
+    use_pixels = args.repr == "pixels"
+    bk_repr = None if args.bk_repr is None else args.bk_repr == "pixels"
+    exs_repr = None if args.exs_repr is None else args.exs_repr == "pixels"
+
+    bk_path, bias_path, exs_path = generate_files_from_task(
+        args.task,
+        args.out,
+        use_pixels=use_pixels,
+        bk_use_pixels=bk_repr,
+        exs_use_pixels=exs_repr,
+        enable_pi=args.enable_pi,
+    )
     print(f"BK, bias and EXS files saved to {args.out}")
 
     try:
