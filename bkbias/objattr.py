@@ -467,7 +467,7 @@ def objects_to_bk_lines(
         lines.append(f"constant({oid},obj).")
 
     # Optional invented predicate facts
-    if enable_pi:
+    if not enable_pi:
         for h, c in hole_color_map.items():
             lines.append(f"hole2color({h},{c}).")
             lines.append(f"constant(int, {h}).")
@@ -545,6 +545,8 @@ def generate_bias(enable_pi: bool = False) -> str:
             "head_pred(outpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
+            "body_pred(hole2color,2).",
+            "type(hole2color,(int,color)).",
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
             "type(outpix,(pair,coord,coord,color)).",
