@@ -446,14 +446,22 @@ def objects_to_bk_lines(
     # max_dim = min(max_dim, 30)
     max_dim = 30
 
+        # bk_lines = []
+    const_ints  = [1,2,3,4]
+    const_colors= [1,2,3,4]
+    for k in const_ints:
+        lines.append(f"int_{k}({k}).")
+    for k in const_colors:
+        lines.append(f"col_{k}({k}).")
+
     # constants
     for pid in range(pair_total):
         lines.append(f"constant(p{pid},pair).")
     for n in range(max_dim):
         lines.append(f"constant({n},coord).")
     for c in range(10):
-        # lines.append(f"constant({c},color).")
-        lines.append(f"constant(color, {c}).")
+        lines.append(f"constant({c},color).")
+        # lines.append(f"constant(color, {c}).")
 
     obj_ids: set[str] = set()
 
@@ -461,8 +469,8 @@ def objects_to_bk_lines(
         for info in objs:
             obj_ids.add(info["obj_id"])
     for n in range(10):
-        # lines.append(f"constant({n},int).")
-        lines.append(f"constant(int, {n}).")
+        lines.append(f"constant({n},int).")
+        # lines.append(f"constant(int, {n}).")
     for oid in sorted(obj_ids):
         lines.append(f"constant({oid},obj).")
 
@@ -529,36 +537,74 @@ def generate_bias(enable_pi: bool = False) -> str:
     """Return Popper bias string for predicting output pixels."""
     bias_lines: List[str] = []
 
+
+
     if enable_pi:
         bias_lines.extend(
             [
                 "enable_pi.",
-                "body_pred(hole2color,2).",
-                "invent_pred(hole2color,(int,color)).",
                 "max_inv_preds(1).",
-                "type(hole2color,(int,color)).",
+                "max_inv_arity(2).",
+                "max_inv_body(2).",
+                "max_inv_clauses(4).",
+
+
+                # "body_pred(hole2color,2).",
+                # "invent_pred(hole2color,(int,color)).",
+                # "type(hole2color,(int,color)).",
+                # "direction(hole2color,(in,out)).",
+
+                "max_clauses(5).",
+                "max_vars(6).",
+                "max_body(3).",
+                # "max_rules(4).  ",
             ]
         )
+    else:
+        bias_lines.extend([
+            "body_pred(hole2color,2).",
+            "type(hole2color,(int,color)).",
+            "direction(hole2color,(in,out)).",
+
+            "max_clauses(1).",
+            "max_vars(6).",
+            "max_body(3).",
+        ])
 
     bias_lines.extend(
         [
             "head_pred(outpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
-            "body_pred(hole2color,2).",
-            "type(hole2color,(int,color)).",
+
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
             "type(outpix,(pair,coord,coord,color)).",
             "type(inbelongs,(pair,obj,coord,coord)).",
             "type(objholes,(pair,obj,int)).",
-            "max_body(3).",
-            "max_vars(7).",
-            "max_clauses(10).",
+            # "max_vars(6).",
+            # "max_clauses(1).",
+            # "max_body(3).",
+            "direction(outpix,(in,in,in,out)).",
+            "direction(inbelongs,(in,out,in,in)).",
+            "direction(objholes,(in,in,out))."
         ]
     )
+    const_ints  = [1,2,3,4]
+    const_colors= [1,2,3,4]
 
-    return "\n".join(bias_lines)
+    for k in const_ints:
+        bias_lines.append(f"body_pred(int_{k},1).")
+        bias_lines.append(f"type(int_{k},(int,)).")
+        bias_lines.append(f"direction(int_{k},(out,)).")
+    for k in const_colors:
+        bias_lines.append(f"body_pred(col_{k},1).")
+        bias_lines.append(f"type(col_{k},(color,)).")
+        bias_lines.append(f"direction(col_{k},(out,)).")
+
+
+
+    return "\n".join(bias_lines)+ "\n"
 
 
 
