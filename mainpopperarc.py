@@ -17,9 +17,9 @@ from bkbias.objattr import (
 DEFAULT_ENABLE_PI = True
 
 
-def count_non_background_pixels(task_data: Dict[str, Any]) -> int:
+def count_non_background_pixels(task_data: Dict[str, Any], pixel_threshold_pct: int) -> int:
     """Return the total number of non-background pixels in all train grids."""
-    bg_color = determine_background_color(task_data, debug=False)
+    bg_color = determine_background_color(task_data, pixel_threshold_pct=pixel_threshold_pct, debug=False)
     count = 0
     for pair in task_data.get("train", []):
         for kind in ("input", "output"):
@@ -37,10 +37,14 @@ def solve_task(
     bk_use_pixels: bool | None,
     exs_use_pixels: bool | None,
     enable_pi: bool,
-) -> None:
+    bg_threshold: int,
+) -> bool:
     """Generate Popper files for a task and run the solver."""
     out_dir = os.path.join(output_base, task_id)
     try:
+        bg_color = determine_background_color(
+            task_data, pixel_threshold_pct=bg_threshold, debug=True
+        )
         bk_path, bias_path, exs_path = generate_files_from_task(
             task_data,
             out_dir,
@@ -48,6 +52,8 @@ def solve_task(
             bk_use_pixels=bk_use_pixels,
             exs_use_pixels=exs_use_pixels,
             enable_pi=enable_pi,
+            pixel_threshold_pct=bg_threshold,
+            background_color=bg_color,
         )
         for label, path in ("BK", bk_path), ("Bias", bias_path), ("Examples", exs_path):
             print(f"\n============================================== {label} for {task_id} =======================")
@@ -56,11 +62,14 @@ def solve_task(
         prog, score, _ = run_popper_from_dir(out_dir)
         if prog is not None:
             print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
+            return True
         else:
             print(f"No solution for {task_id}")
+            return False
     except Exception as e:  # pragma: no cover - runtime errors
         print(f"Error processing {task_id}: {e}")
         traceback.print_exc()
+        return False
 
 
 def main() -> None:
@@ -94,6 +103,12 @@ def main() -> None:
         default="popper_kb",
         help="Directory to store generated files",
     )
+    parser.add_argument(
+        "--bg-threshold",
+        type=int,
+        default=40,
+        help="Background color detection threshold percentage",
+    )
     args = parser.parse_args()
 
     use_pixels = args.repr == "pixels"
@@ -103,15 +118,19 @@ def main() -> None:
     train_tasks, train_sols, eval_tasks, eval_sols, test_tasks = prepare_arc_data()
     task_counts: List[Tuple[str, int]] = []
     for tid, tdata in train_tasks.items():
-        cnt = count_non_background_pixels(tdata)
+        cnt = count_non_background_pixels(tdata, args.bg_threshold)
         task_counts.append((tid, cnt))
     task_counts.sort(key=lambda x: x[1])
 
     os.makedirs(args.out, exist_ok=True)
 
-    for tid, _ in task_counts:
-        print(f"Processing {tid}")
-        solve_task(
+    success_count = 0
+    total_tasks = len(task_counts)
+    for idx, (tid, _) in enumerate(task_counts, start=1):
+        print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
+        
+        print(f"Processing {tid} ({idx}/{total_tasks})")
+        solved = solve_task(
             tid,
             train_tasks[tid],
             output_base=args.out,
@@ -119,7 +138,11 @@ def main() -> None:
             bk_use_pixels=bk_use_pixels,
             exs_use_pixels=exs_use_pixels,
             enable_pi=args.enable_pi,
+            bg_threshold=args.bg_threshold,
         )
+        if solved:
+            success_count += 1
+            print(f"当前成功记录数: {success_count}")
         try:
             # 等待用户敲 ↵ 或输入任意字符
             # input(f"\n[Epoch {epoch}] 按 Enter 继续，Ctrl-C 终止…")

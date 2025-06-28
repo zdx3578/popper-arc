@@ -194,11 +194,16 @@ def extract_objects(grid, background=None):
 
 
 
-def determine_background_color(task_data: Dict[str, Any], debug: bool = True) -> int | None:
+def determine_background_color(
+    task_data: Dict[str, Any],
+    pixel_threshold_pct: int = 40,
+    debug: bool = True,
+) -> int | None:
     """Analyze all training grids and return the dominant background color."""
-    # Threshold percentage for determining a background color
-    pixel_threshold_pct = 40
-    print(f"Determining background color with threshold: {pixel_threshold_pct}%")
+    if debug:
+        print(
+            f"Determining background color with threshold: {pixel_threshold_pct}%"
+        )
 
     all_grids: List[List[List[int]]] = []
     for example in task_data.get("train", []):
@@ -233,6 +238,11 @@ def determine_background_color(task_data: Dict[str, Any], debug: bool = True) ->
     sorted_colors = sorted(
         color_avg_percentages.items(), key=lambda x: x[1], reverse=True
     )
+
+    if debug:
+        print("Color distribution across training data:")
+        for col, pct in sorted_colors:
+            print(f"  color {col}: {pct:.2f}%")
 
     if sorted_colors:
         max_color, max_percentage = sorted_colors[0]
@@ -387,15 +397,23 @@ def _find_matching_output_color(in_obj: FrozenSet[Tuple[int, Tuple[int, int]]],
     return None
 
 
-def compute_hole_color_mapping(task_data: Dict[str, Any], debug: bool = False) -> Dict[int, int]:
+def compute_hole_color_mapping(
+    task_data: Dict[str, Any],
+    background_color: int | None = None,
+    pixel_threshold_pct: int = 40,
+    debug: bool = False,
+) -> Dict[int, int]:
     """Return mapping from hole count to output color based on identical objects."""
     mapping: Dict[int, int] = {}
-    background = determine_background_color(task_data)
+    if background_color is None:
+        background_color = determine_background_color(
+            task_data, pixel_threshold_pct=pixel_threshold_pct, debug=debug
+        )
     for pair_id, pair in enumerate(task_data.get("train", [])):
         in_grid = pair["input"]
         out_grid = pair["output"]
-        in_objs = extract_objects(in_grid, background)
-        out_objs = extract_objects(out_grid, background)
+        in_objs = extract_objects(in_grid, background_color)
+        out_objs = extract_objects(out_grid, background_color)
         for in_obj in in_objs:
             col = _find_matching_output_color(in_obj, out_objs)
             if col is None:
@@ -417,6 +435,8 @@ def objects_to_bk_lines(
     include_pixels: bool = True,
     *,
     enable_pi: bool = True,
+    background_color: int | None = None,
+    pixel_threshold_pct: int = 40,
 ) -> List[str]:
     """Convert extracted object infos into Popper background facts.
 
@@ -432,7 +452,12 @@ def objects_to_bk_lines(
         omitted, producing a purely object level BK.
     """
     lines: List[str] = []
-    hole_color_map = compute_hole_color_mapping(task_data, debug=False)
+    hole_color_map = compute_hole_color_mapping(
+        task_data,
+        background_color=background_color,
+        pixel_threshold_pct=pixel_threshold_pct,
+        debug=False,
+    )
 
     pair_total = len(task_data.get("train", []))
     max_dim = 0
@@ -714,6 +739,8 @@ def generate_files_from_task(
     bk_use_pixels: bool | None = None,
     exs_use_pixels: bool | None = None,
     enable_pi: bool = True,
+    pixel_threshold_pct: int = 40,
+    background_color: int | None = None,
 ) -> Tuple[str, str, str]:
     """Generate BK, bias and exs files from a task JSON.
 
@@ -738,8 +765,11 @@ def generate_files_from_task(
     """
     os.makedirs(output_dir, exist_ok=True)
     task_data = load_task(task) if isinstance(task, str) else task
-    background = determine_background_color(task_data)
-    objs = extract_objects_from_task(task_data, background)
+    if background_color is None:
+        background_color = determine_background_color(
+            task_data, pixel_threshold_pct=pixel_threshold_pct, debug=False
+        )
+    objs = extract_objects_from_task(task_data, background_color)
 
     if bk_use_pixels is None:
         bk_use_pixels = use_pixels
@@ -751,10 +781,12 @@ def generate_files_from_task(
         objs,
         include_pixels=bk_use_pixels,
         enable_pi=enable_pi,
+        background_color=background_color,
+        pixel_threshold_pct=pixel_threshold_pct,
     )
     bias_content = generate_bias(enable_pi=enable_pi)
     if exs_use_pixels:
-        exs_lines = outpix_examples(task_data, background, neg_factor=3)
+        exs_lines = outpix_examples(task_data, background_color, neg_factor=3)
     else:
         exs_lines = objects_to_exs_lines(objs)
 
@@ -813,7 +845,8 @@ def run_popper_for_task(
     bk_use_pixels: bool | None = None,
     exs_use_pixels: bool | None = None,
     enable_pi: bool = True,
-):
+    pixel_threshold_pct: int = 40,
+    ):
     """Generate Popper input files for ``task`` and run Popper."""
     bk, bias, exs = generate_files_from_task(
         task,
@@ -822,6 +855,7 @@ def run_popper_for_task(
         bk_use_pixels=bk_use_pixels,
         exs_use_pixels=exs_use_pixels,
         enable_pi=enable_pi,
+        pixel_threshold_pct=pixel_threshold_pct,
     )
     return run_popper_from_dir(output_dir)
 
@@ -856,6 +890,12 @@ if __name__ == "__main__":
         default=True,
         help="Enable predicate invention (hole2color).",
     )
+    parser.add_argument(
+        "--bg-threshold",
+        type=int,
+        default=40,
+        help="Background color detection threshold percentage",
+    )
     args = parser.parse_args()
 
 
@@ -875,6 +915,7 @@ if __name__ == "__main__":
         bk_use_pixels=bk_repr,
         exs_use_pixels=exs_repr,
         enable_pi=args.enable_pi,
+        pixel_threshold_pct=args.bg_threshold,
     )
     print(f"BK, bias and EXS files saved to {args.out}")
 
