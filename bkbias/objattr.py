@@ -197,7 +197,8 @@ def extract_objects(grid, background=None):
 def determine_background_color(task_data: Dict[str, Any], debug: bool = True) -> int | None:
     """Analyze all training grids and return the dominant background color."""
     # Threshold percentage for determining a background color
-    pixel_threshold_pct = 60
+    pixel_threshold_pct = 40
+    print(f"Determining background color with threshold: {pixel_threshold_pct}%")
 
     all_grids: List[List[List[int]]] = []
     for example in task_data.get("train", []):
