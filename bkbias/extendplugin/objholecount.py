@@ -56,7 +56,7 @@ def count_holes(grid: Grid, comp: Iterable[Position]) -> int:
 
 def count_object_holes(obj: Iterable[Tuple[int, Position]]) -> int:
     """Return the number of holes inside an object."""
-    from objattr import shift_to_origin
+    from bkbias.objattr import shift_to_origin
 
     obj_origin = shift_to_origin(obj)
     coords = [(r, c) for _, (r, c) in obj_origin]

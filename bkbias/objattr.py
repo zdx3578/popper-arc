@@ -4,7 +4,7 @@ import random
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 import traceback
-from extendplugin.objholecount import count_object_holes
+from bkbias.extendplugin.objholecount import count_object_holes
 
 # Mapping from ARC color numbers to emoji for debugging displays
 COLOR_MAP = {
@@ -415,7 +415,7 @@ def objects_to_bk_lines(
     all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]],
     include_pixels: bool = True,
     *,
-    enable_pi: bool = False,
+    enable_pi: bool = True,
 ) -> List[str]:
     """Convert extracted object infos into Popper background facts.
 
@@ -533,7 +533,7 @@ def save_bk(lines: List[str], path: str) -> None:
         f.write("\n".join(grouped))
 
 
-def generate_bias(enable_pi: bool = False) -> str:
+def generate_bias(enable_pi: bool = True) -> str:
     """Return Popper bias string for predicting output pixels."""
     bias_lines: List[str] = []
 
@@ -706,20 +706,20 @@ def save_lines(lines: List[str], path: str) -> None:
 
 
 def generate_files_from_task(
-    task_path: str,
+    task: str | Dict[str, Any],
     output_dir: str,
     *,
     use_pixels: bool = True,
     bk_use_pixels: bool | None = None,
     exs_use_pixels: bool | None = None,
-    enable_pi: bool = False,
+    enable_pi: bool = True,
 ) -> Tuple[str, str, str]:
     """Generate BK, bias and exs files from a task JSON.
 
     Parameters
     ----------
-    task_path : str
-        Path to the ARC JSON task.
+    task : str | Dict[str, Any]
+        ARC task JSON path or loaded data.
     output_dir : str
         Directory where ``bk.pl``, ``bias.pl`` and ``exs.pl`` will be written.
     use_pixels : bool, optional
@@ -736,7 +736,7 @@ def generate_files_from_task(
         ``hole2color/2`` predicate.
     """
     os.makedirs(output_dir, exist_ok=True)
-    task_data = load_task(task_path)
+    task_data = load_task(task) if isinstance(task, str) else task
     background = determine_background_color(task_data)
     objs = extract_objects_from_task(task_data, background)
 
@@ -805,17 +805,17 @@ def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
 
 
 def run_popper_for_task(
-    task_path: str,
+    task: str | Dict[str, Any],
     output_dir: str,
     *,
     use_pixels: bool = True,
     bk_use_pixels: bool | None = None,
     exs_use_pixels: bool | None = None,
-    enable_pi: bool = False,
+    enable_pi: bool = True,
 ):
-    """Generate Popper input files for ``task_path`` and run Popper."""
+    """Generate Popper input files for ``task`` and run Popper."""
     bk, bias, exs = generate_files_from_task(
-        task_path,
+        task,
         output_dir,
         use_pixels=use_pixels,
         bk_use_pixels=bk_use_pixels,
@@ -851,7 +851,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--enable-pi",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Enable predicate invention (hole2color).",
     )
     args = parser.parse_args()
