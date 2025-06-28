@@ -50,12 +50,12 @@ def solve_task(
             enable_pi=enable_pi,
         )
         for label, path in ("BK", bk_path), ("Bias", bias_path), ("Examples", exs_path):
-            print(f"\n===== {label} for {task_id} =====")
+            print(f"\n============================================== {label} for {task_id} =======================")
             with open(path) as f:
                 print(f.read())
         prog, score, _ = run_popper_from_dir(out_dir)
         if prog is not None:
-            print(f"Solved {task_id} with score {score}")
+            print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
         else:
             print(f"No solution for {task_id}")
     except Exception as e:  # pragma: no cover - runtime errors
@@ -123,18 +123,20 @@ def main() -> None:
         try:
             # 等待用户敲 ↵ 或输入任意字符
             # input(f"\n[Epoch {epoch}] 按 Enter 继续，Ctrl-C 终止…")
-            time.sleep(5)
+            time.sleep(1)
 
         except KeyboardInterrupt:
             print("\n检测到用户中断，安全退出。")
             break
-        print
-        print
+        print('\n')
+        print('\n')
         print(f"Finished {tid}\n")
-        print
-        print
-        print
-        print
+        print('\n')
+        print('\n')
+        print('\n')
+        print('\n')
+        print('\n')
+        print('\n')
 
 
 
