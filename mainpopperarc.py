@@ -65,10 +65,10 @@ def solve_task(
             pixel_threshold_pct=bg_threshold,
             background_color=bg_color,
         )
-        for label, path in ("BK", bk_path), ("Bias", bias_path), ("Examples", exs_path):
-            print(f"\n============================================== {label} for {task_id} =======================")
-            with open(path) as f:
-                print(f.read())
+        # for label, path in ("BK", bk_path), ("Bias", bias_path), ("Examples", exs_path):
+        #     print(f"\n============================================== {label} for {task_id} =======================")
+        #     with open(path) as f:
+        #         print(f.read())
         prog, score, _ = run_popper_from_dir(out_dir)
         if prog is not None:
             print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
@@ -154,7 +154,7 @@ def main() -> None:
     total_tasks = len(selected)
     for idx, (tid, _) in enumerate(selected, start=1):
         print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
-        
+
         print(f"Processing {tid} ({idx}/{total_tasks})")
         solved, hyp = solve_task(
             tid,
