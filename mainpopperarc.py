@@ -4,12 +4,16 @@ import time
 import traceback
 from typing import Any, Dict, List, Tuple
 
-from init.init import prepare_arc_data
+from init.init import prepare_arc_data, get_test_pairs
 from bkbias.objattr import (
     determine_background_color,
     generate_files_from_task,
     nonbg_pixels,
     run_popper_from_dir,
+    generate_test_bk,
+    predict_from_prolog,
+    evaluate_prediction,
+    save_grid_txt,
 )
 
 
@@ -38,7 +42,7 @@ def solve_task(
     exs_use_pixels: bool | None,
     enable_pi: bool,
     bg_threshold: int,
-) -> bool:
+) -> Tuple[bool, str | None]:
     """Generate Popper files for a task and run the solver."""
     out_dir = os.path.join(output_base, task_id)
     try:
@@ -62,14 +66,21 @@ def solve_task(
         prog, score, _ = run_popper_from_dir(out_dir)
         if prog is not None:
             print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
-            return True
+            hyp_path = os.path.join(out_dir, "hyp.pl")
+            with open(hyp_path, "w") as f:
+                if isinstance(prog, str):
+                    f.write(prog.strip() + "\n")
+                else:
+                    for rule in prog:
+                        f.write(str(rule).strip() + "\n")
+            return True, hyp_path
         else:
             print(f"No solution for {task_id}")
-            return False
+            return False, None
     except Exception as e:  # pragma: no cover - runtime errors
         print(f"Error processing {task_id}: {e}")
         traceback.print_exc()
-        return False
+        return False, None
 
 
 def main() -> None:
@@ -109,6 +120,11 @@ def main() -> None:
         default=40,
         help="Background color detection threshold percentage",
     )
+    parser.add_argument(
+        "--task-id",
+        default="0a2355a6",
+        help="Run only the specified ARC task id",
+    )
     args = parser.parse_args()
 
     use_pixels = args.repr == "pixels"
@@ -125,12 +141,17 @@ def main() -> None:
     os.makedirs(args.out, exist_ok=True)
 
     success_count = 0
-    total_tasks = len(task_counts)
-    for idx, (tid, _) in enumerate(task_counts, start=1):
+    if args.task_id:
+        selected = [(tid, cnt) for tid, cnt in task_counts if tid == args.task_id]
+    else:
+        selected = task_counts
+
+    total_tasks = len(selected)
+    for idx, (tid, _) in enumerate(selected, start=1):
         print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
         
         print(f"Processing {tid} ({idx}/{total_tasks})")
-        solved = solve_task(
+        solved, hyp = solve_task(
             tid,
             train_tasks[tid],
             output_base=args.out,
@@ -140,9 +161,26 @@ def main() -> None:
             enable_pi=args.enable_pi,
             bg_threshold=args.bg_threshold,
         )
-        if solved:
+        if solved and hyp:
             success_count += 1
             print(f"当前成功记录数: {success_count}")
+            test_pairs = get_test_pairs(tid, train_tasks, train_sols)
+            for t_idx, pair in enumerate(test_pairs):
+                test_dir = os.path.join(args.out, tid, f"test{t_idx}")
+                bk_path = generate_test_bk(
+                    pair["input"],
+                    pair["output"],
+                    test_dir,
+                    enable_pi=args.enable_pi,
+                    background_color=None,
+                    pixel_threshold_pct=args.bg_threshold,
+                )
+                meta_path = os.path.join(test_dir, "grid_meta.json")
+                pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0")
+                save_grid_txt(pred_grid, os.path.join(test_dir, "pred.txt"))
+                exact, pix_acc = evaluate_prediction(pred_grid, pair["output"])
+                print(f"Test {t_idx} - Exact match? {exact}")
+                print(f"Test {t_idx} - Pixel accuracy: {pix_acc}")
         try:
             # 等待用户敲 ↵ 或输入任意字符
             # input(f"\n[Epoch {epoch}] 按 Enter 继续，Ctrl-C 终止…")

@@ -580,9 +580,9 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "type(hole2color,(int,color)).",
                 # "direction(hole2color,(in,out)).",
 
-                "max_clauses(5).",
-                "max_vars(6).",
-                "max_body(3).",
+                "max_clauses(4).",
+                "max_vars(5).",
+                "max_body(2).",
                 # "max_rules(4).  ",
             ]
         )
@@ -729,6 +729,108 @@ def save_lines(lines: List[str], path: str) -> None:
             f.write("\n".join(lines) + "\n")
         else:
             f.write("")
+
+
+def generate_test_bk(
+    in_grid: List[List[int]],
+    out_grid: List[List[int]],
+    output_dir: str,
+    *,
+    enable_pi: bool = True,
+    background_color: int | None = None,
+    pixel_threshold_pct: int = 40,
+) -> str:
+    """Generate BK for a single test pair and save to ``testbk.pl``.
+
+    Returns the path to the created BK file."""
+    os.makedirs(output_dir, exist_ok=True)
+    task = {"train": [{"input": in_grid, "output": out_grid}]}
+    if background_color is None:
+        background_color = determine_background_color(
+            task, pixel_threshold_pct=pixel_threshold_pct, debug=False
+        )
+    objs = extract_objects_from_task(task, background_color)
+    bk_lines = objects_to_bk_lines(
+        task,
+        objs,
+        include_pixels=True,
+        enable_pi=enable_pi,
+        background_color=background_color,
+        pixel_threshold_pct=pixel_threshold_pct,
+    )
+    bk_path = os.path.join(output_dir, "testbk.pl")
+    save_bk(bk_lines, bk_path)
+    meta = {
+        "input_size": [len(in_grid), len(in_grid[0]) if in_grid else 0],
+        "output_size": [len(out_grid), len(out_grid[0]) if out_grid else 0],
+    }
+    with open(os.path.join(output_dir, "grid_meta.json"), "w") as f:
+        json.dump(meta, f)
+    return bk_path
+
+
+def predict_from_prolog(
+    hyp_path: str,
+    bk_path: str,
+    meta_path: str,
+    pair_id: str = "p0",
+) -> List[List[int]]:
+    """Return predicted output grid using ``hyp_path`` and ``bk_path``.
+
+    Parameters
+    ----------
+    hyp_path : str
+        Path to the learned hypothesis (``hyp.pl``).
+    bk_path : str
+        Path to the background knowledge file for the test pair.
+    meta_path : str
+        Path to the JSON file containing grid size metadata.
+    pair_id : str, optional
+        Pair identifier used in BK facts (default ``"p0"``).
+    """
+
+    from pyswip import Prolog  # Imported here to avoid mandatory dependency
+    import numpy as np
+
+    meta = json.load(open(meta_path))
+    rows, cols = meta.get("output_size", meta.get("size", [0, 0]))
+    grid = np.zeros((rows, cols), dtype=int)
+
+    prolog = Prolog()
+    prolog.consult(hyp_path)
+    prolog.consult(bk_path)
+
+    query = f"outpix({pair_id},X,Y,C)"
+    for sol in prolog.query(query):
+        x = int(sol["X"])
+        y = int(sol["Y"])
+        c = int(sol["C"])
+        if 0 <= y < rows and 0 <= x < cols:
+            grid[y][x] = c
+
+    return grid.tolist()
+
+
+def evaluate_prediction(pred: List[List[int]], gold: List[List[int]]) -> Tuple[bool, float]:
+    """Return (exact_match, pixel_accuracy) comparing ``pred`` with ``gold``."""
+
+    import numpy as np
+
+    pred_arr = np.array(pred)
+    gold_arr = np.array(gold)
+    if pred_arr.shape != gold_arr.shape:
+        raise ValueError("Prediction and gold grid sizes differ")
+
+    exact = bool((pred_arr == gold_arr).all())
+    pix_acc = float((pred_arr == gold_arr).sum() / gold_arr.size)
+    return exact, pix_acc
+
+
+def save_grid_txt(grid: List[List[int]], path: str) -> None:
+    """Save ``grid`` to a text file for quick visualisation."""
+    import numpy as np
+
+    np.savetxt(path, np.array(grid, dtype=int), fmt="%d")
 
 
 def generate_files_from_task(
