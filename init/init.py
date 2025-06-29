@@ -43,6 +43,8 @@ def load_json(arcfile_path):
 # DATA_PATH = '/kaggle/input/3-28arcdsl/forpopper2'
 # DATA_PATH = '/Users/zhangdexiang/github/ARC-AGI-2/arc-prize-2025'
 DATA_PATH = './data'
+# DATA_PATH = './popper-arc/data'
+
 import os
 
 def prepare_arc_data():

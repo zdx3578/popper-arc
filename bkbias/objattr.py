@@ -584,8 +584,8 @@ def generate_bias(enable_pi: bool = True) -> str:
             [
                 "enable_pi.",
                 "max_inv_preds(1).",
-                "max_inv_arity(2).",
-                "max_inv_body(2).",
+                "max_inv_arity(3).",
+                "max_inv_body(3).",
                 "max_inv_clauses(4).",
 
 
@@ -595,8 +595,8 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "direction(hole2color,(in,out)).",
 
                 "max_clauses(4).",
-                "max_vars(6).",
-                "max_body(3).",
+                "max_vars(7).",
+                "max_body(4).",
                 # "max_rules(4).  ",
             ]
         )
@@ -694,26 +694,27 @@ def nonbg_pixels(grid: List[List[int]], bg_color: int | None) -> List[Tuple[Tupl
     return pixels
 
 
-def add_negatives(pair_id: int, out_grid: List[List[int]], bg_color: int | None, exs: List[str], k_factor: int = 2) -> None:
-    """Append negative outpix examples to ``exs``."""
-    pos_coords = {(x, y) for (x, y), _ in nonbg_pixels(out_grid, bg_color)}
-    h = len(out_grid)
-    w = len(out_grid[0]) if out_grid else 0
-    all_coords = [(x, y) for x in range(h) for y in range(w)]
-    random.shuffle(all_coords)
+def add_negatives(
+    pair_id: int,
+    out_grid: List[List[int]],
+    bg_color: int | None,
+    exs: List[str],
+    k_factor: int = 2,
+) -> None:
+    """Append negative outpix examples to ``exs``.
 
-    added = 0
-    target = k_factor * len(pos_coords)
-    for (x, y) in all_coords:
-        if (x, y) in pos_coords:
-            continue
-        wrong_c = random.randint(0, 9)
-        if wrong_c == bg_color:
-            continue
-        exs.append(f"neg(outpix(p{pair_id},{x},{y},{wrong_c})).")
-        added += 1
-        if added >= target:
-            break
+    The negatives are generated using coordinates of existing positive pixels
+    but with a randomly chosen wrong color.
+    """
+
+    pos_pixels = nonbg_pixels(out_grid, bg_color)
+    colors = list(range(10))
+
+    for (x, y), true_c in pos_pixels:
+        wrong_colors = [c for c in colors if c != true_c and c != bg_color]
+        random.shuffle(wrong_colors)
+        for wrong_c in wrong_colors[:k_factor]:
+            exs.append(f"neg(outpix(p{pair_id},{x},{y},{wrong_c})).")
 
 
 def outpix_examples(task_data: Dict[str, Any], background_color: int | None = None, neg_factor: int = 2) -> List[str]:
@@ -928,7 +929,7 @@ def run_popper_from_dir(kb_dir: str):
     settings = Settings(
         kbpath=kb_dir,     # 必需：ARC 任务目录
         debug=True,        # 打开最详细的日志
-        show_stats = True,
+        show_stats = False,
         noisy=True ,
         quiet=False,       # 允许输出
         # show_stats=True,   # 结束时打印统计
