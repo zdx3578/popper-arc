@@ -1,5 +1,6 @@
 import argparse
 import os
+from pathlib import Path
 import time
 import traceback
 from typing import Any, Dict, List, Tuple
@@ -14,7 +15,9 @@ from bkbias.objattr import (
     predict_from_prolog,
     evaluate_prediction,
     save_grid_txt,
+    print_grid,
 )
+from bkbias.hyp_export import dump_hypothesis
 
 
 # Enable predicate invention by default
@@ -49,6 +52,9 @@ def solve_task(
         bg_color = determine_background_color(
             task_data, pixel_threshold_pct=bg_threshold, debug=True
         )
+        for idx, pair in enumerate(task_data.get("train", [])):
+            print_grid(pair.get("input"), f"Train {task_id} input {idx}")
+            print_grid(pair.get("output"), f"Train {task_id} output {idx}")
         bk_path, bias_path, exs_path = generate_files_from_task(
             task_data,
             out_dir,
@@ -67,12 +73,11 @@ def solve_task(
         if prog is not None:
             print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
             hyp_path = os.path.join(out_dir, "hyp.pl")
-            with open(hyp_path, "w") as f:
-                if isinstance(prog, str):
+            if isinstance(prog, str):
+                with open(hyp_path, "w") as f:
                     f.write(prog.strip() + "\n")
-                else:
-                    for rule in prog:
-                        f.write(str(rule).strip() + "\n")
+            else:
+                dump_hypothesis(prog, Path(hyp_path))
             return True, hyp_path
         else:
             print(f"No solution for {task_id}")
@@ -167,6 +172,8 @@ def main() -> None:
             test_pairs = get_test_pairs(tid, train_tasks, train_sols)
             for t_idx, pair in enumerate(test_pairs):
                 test_dir = os.path.join(args.out, tid, f"test{t_idx}")
+                print_grid(pair["input"], f"Test {t_idx} input")
+                print_grid(pair["output"], f"Test {t_idx} expected")
                 bk_path = generate_test_bk(
                     pair["input"],
                     pair["output"],
@@ -177,6 +184,7 @@ def main() -> None:
                 )
                 meta_path = os.path.join(test_dir, "grid_meta.json")
                 pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0")
+                print_grid(pred_grid, f"Test {t_idx} predicted")
                 save_grid_txt(pred_grid, os.path.join(test_dir, "pred.txt"))
                 exact, pix_acc = evaluate_prediction(pred_grid, pair["output"])
                 print(f"Test {t_idx} - Exact match? {exact}")

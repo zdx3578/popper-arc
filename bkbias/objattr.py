@@ -21,6 +21,20 @@ COLOR_MAP = {
 }
 
 
+def grid_to_str(grid: List[List[int]]) -> str:
+    """Return ``grid`` rendered using :data:`COLOR_MAP` emojis."""
+    return "\n".join(
+        "".join(COLOR_MAP.get(val, str(val)) for val in row) for row in grid
+    )
+
+
+def print_grid(grid: List[List[int]], title: str | None = None) -> None:
+    """Print ``grid`` with optional ``title`` using emoji colors."""
+    if title:
+        print(f"\n{title}")
+    print(grid_to_str(grid))
+
+
 class IdManager:
     """Simple ID manager for assigning incremental IDs per category."""
 
@@ -581,8 +595,8 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "direction(hole2color,(in,out)).",
 
                 "max_clauses(4).",
-                "max_vars(5).",
-                "max_body(2).",
+                "max_vars(6).",
+                "max_body(3).",
                 # "max_rules(4).  ",
             ]
         )
@@ -802,11 +816,11 @@ def predict_from_prolog(
 
     query = f"outpix({pair_id},X,Y,C)"
     for sol in prolog.query(query):
-        x = int(sol["X"])
-        y = int(sol["Y"])
-        c = int(sol["C"])
-        if 0 <= y < rows and 0 <= x < cols:
-            grid[y][x] = c
+        row_idx = int(sol["X"])
+        col_idx = int(sol["Y"])
+        color = int(sol["C"])
+        if 0 <= row_idx < rows and 0 <= col_idx < cols:
+            grid[row_idx][col_idx] = color
 
     return grid.tolist()
 
@@ -927,6 +941,30 @@ def run_popper_from_dir(kb_dir: str):
     return learn_solution(settings)
 
 
+def run_popper_subprocess(kb_dir: str):
+    """Run Popper in a separate subprocess and return the learned program."""
+    import subprocess
+    import tempfile
+    import json
+
+    cmd = ["popper", kb_dir]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr)
+
+    lines = []
+    in_sol = False
+    for ln in result.stdout.splitlines():
+        if "SOLUTION" in ln:
+            in_sol = True
+            continue
+        if in_sol:
+            if not ln.strip():
+                break
+            lines.append(ln.strip())
+    return lines
+
+
 def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
     """Create a temporary kb directory and run Popper with the given files."""
     import shutil
@@ -936,7 +974,7 @@ def run_popper_from_files(bk_path: str, bias_path: str, exs_path: str):
         shutil.copy(bk_path, os.path.join(tmpdir, "bk.pl"))
         shutil.copy(bias_path, os.path.join(tmpdir, "bias.pl"))
         shutil.copy(exs_path, os.path.join(tmpdir, "exs.pl"))
-        return run_popper_from_dir(tmpdir)
+        return run_popper_subprocess(tmpdir)
 
 
 def run_popper_for_task(
@@ -959,7 +997,7 @@ def run_popper_for_task(
         enable_pi=enable_pi,
         pixel_threshold_pct=pixel_threshold_pct,
     )
-    return run_popper_from_dir(output_dir)
+    return run_popper_subprocess(output_dir)
 
 
 if __name__ == "__main__":

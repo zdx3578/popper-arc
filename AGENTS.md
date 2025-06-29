@@ -4,6 +4,8 @@
 
 但是最近的改动代码入口都是：popper-arc/bkbias/objattr.py  现在的入口是 objattr.py  是现在最核心的文件。
 
+现在代码的最新入口又是：mainpopperarc.py  了，已经可以循环多个任务了
+
 ilp框架： <https://github.com/logic-and-learning-lab/Popper>
 安装方法：pip install git+<https://github.com/logic-and-learning-lab/Popper@main>
    popper 请安装好
@@ -21,6 +23,10 @@ if prog != None:
 
 
 
- SWI-Prolog 安装poppper要求的版本
+SWI-Prolog 安装poppper要求的版本:方法：
+sudo apt-get install -y software-properties-common
+sudo add-apt-repository ppa:swi-prolog/stable
+sudo apt update
+sudo apt install swi-prolog
 
  popper 请安装好
