@@ -1,9 +1,14 @@
 import argparse
 import os
+import random
 from pathlib import Path
 import time
 import traceback
 from typing import Any, Dict, List, Tuple
+import shutil
+import concurrent.futures
+import psutil
+import logging
 
 from init.init import prepare_arc_data, get_test_pairs
 from bkbias.objattr import (
@@ -17,11 +22,16 @@ from bkbias.objattr import (
     save_grid_txt,
     print_grid,
 )
-from bkbias.hyp_export import dump_hypothesis
 
 
 # Enable predicate invention by default
 DEFAULT_ENABLE_PI = True
+
+
+def default_worker_count(reserve: int = 3) -> int:
+    """Return default number of parallel workers."""
+    total = psutil.cpu_count(logical=False) or 1
+    return max(1, total - reserve)
 
 
 def count_non_background_pixels(task_data: Dict[str, Any], pixel_threshold_pct: int) -> int:
@@ -45,6 +55,8 @@ def solve_task(
     exs_use_pixels: bool | None,
     enable_pi: bool,
     bg_threshold: int,
+    popper_debug: bool = True,
+    show_stdout: bool = True,
 ) -> Tuple[bool, str | None]:
     """Generate Popper files for a task and run the solver."""
     out_dir = os.path.join(output_base, task_id)
@@ -69,15 +81,12 @@ def solve_task(
         #     print(f"\n============================================== {label} for {task_id} =======================")
         #     with open(path) as f:
         #         print(f.read())
-        prog, score, _ = run_popper_from_dir(out_dir)
-        if prog is not None:
+        prog_path, info = run_popper_from_dir(out_dir, debug=popper_debug, show_output=show_stdout)
+        score = info.get("score")
+        if prog_path is not None:
             print(f"！！！！！！！！！！！！！！！！！！！！！！Solved {task_id} with score {score}")
             hyp_path = os.path.join(out_dir, "hyp.pl")
-            if isinstance(prog, str):
-                with open(hyp_path, "w") as f:
-                    f.write(prog.strip() + "\n")
-            else:
-                dump_hypothesis(prog, Path(hyp_path))
+            shutil.copy(prog_path, hyp_path)
             return True, hyp_path
         else:
             print(f"No solution for {task_id}")
@@ -89,6 +98,11 @@ def solve_task(
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+
     parser = argparse.ArgumentParser(description="Run Popper on ARC tasks")
     parser.add_argument(
         "--repr",
@@ -127,10 +141,25 @@ def main() -> None:
     )
     parser.add_argument(
         "--task-id",
-        default="0a2355a6",
+        # default="0a2355a6",
         help="Run only the specified ARC task id",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=default_worker_count(),
+        help="Number of parallel worker processes",
+    )
+    parser.add_argument(
+        "--popper-debug",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Run Popper in debug mode",
+    )
     args = parser.parse_args()
+
+    if args.popper_debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     use_pixels = args.repr == "pixels"
     bk_use_pixels = None if args.bk_repr is None else args.bk_repr == "pixels"
@@ -152,60 +181,70 @@ def main() -> None:
         selected = task_counts
 
     total_tasks = len(selected)
-    for idx, (tid, _) in enumerate(selected, start=1):
-        print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
+    if total_tasks == 1:
+        workers = 1
+    else:
+        workers = args.workers
 
-        print(f"Processing {tid} ({idx}/{total_tasks})")
-        solved, hyp = solve_task(
-            tid,
-            train_tasks[tid],
-            output_base=args.out,
-            use_pixels=use_pixels,
-            bk_use_pixels=bk_use_pixels,
-            exs_use_pixels=exs_use_pixels,
-            enable_pi=args.enable_pi,
-            bg_threshold=args.bg_threshold,
-        )
-        if solved and hyp:
-            success_count += 1
-            print(f"当前成功记录数: {success_count}")
-            test_pairs = get_test_pairs(tid, train_tasks, train_sols)
-            for t_idx, pair in enumerate(test_pairs):
-                test_dir = os.path.join(args.out, tid, f"test{t_idx}")
-                print_grid(pair["input"], f"Test {t_idx} input")
-                print_grid(pair["output"], f"Test {t_idx} expected")
-                bk_path = generate_test_bk(
-                    pair["input"],
-                    pair["output"],
-                    test_dir,
-                    enable_pi=args.enable_pi,
-                    background_color=None,
-                    pixel_threshold_pct=args.bg_threshold,
-                )
-                meta_path = os.path.join(test_dir, "grid_meta.json")
-                pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0")
-                print_grid(pred_grid, f"Test {t_idx} predicted")
-                save_grid_txt(pred_grid, os.path.join(test_dir, "pred.txt"))
-                exact, pix_acc = evaluate_prediction(pred_grid, pair["output"])
-                print(f"Test {t_idx} - Exact match? {exact}")
-                print(f"Test {t_idx} - Pixel accuracy: {pix_acc}")
-        try:
-            # 等待用户敲 ↵ 或输入任意字符
-            # input(f"\n[Epoch {epoch}] 按 Enter 继续，Ctrl-C 终止…")
-            time.sleep(1)
+    show_stdout_tid = random.choice(selected)[0] if selected else None
 
-        except KeyboardInterrupt:
-            print("\n检测到用户中断，安全退出。")
-            break
-        print('\n')
-        print('\n')
-        print(f"Finished {tid}\n")
-        print('\n')
-        print('\n')
-        print('\n')
-        print('\n')
-        print('\n')
-        print('\n')
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+        future_map = {}
+        for idx, (tid, _) in enumerate(selected, start=1):
+            print(
+                " * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * "
+            )
+            print(f"Queueing {tid} ({idx}/{total_tasks})")
+            fut = ex.submit(
+                solve_task,
+                tid,
+                train_tasks[tid],
+                output_base=args.out,
+                use_pixels=use_pixels,
+                bk_use_pixels=bk_use_pixels,
+                exs_use_pixels=exs_use_pixels,
+                enable_pi=args.enable_pi,
+                bg_threshold=args.bg_threshold,
+                popper_debug=args.popper_debug,
+                show_stdout=(tid == show_stdout_tid),
+            )
+            future_map[fut] = tid
+
+        for fut in concurrent.futures.as_completed(future_map):
+            tid = future_map[fut]
+            try:
+                solved, hyp = fut.result()
+            except Exception as e:
+                print(f"Task {tid} failed: {e}")
+                traceback.print_exc()
+                continue
+
+            if solved and hyp:
+                success_count += 1
+                print(f"当前成功记录数: {success_count}")
+                test_pairs = get_test_pairs(tid, train_tasks, train_sols)
+                for t_idx, pair in enumerate(test_pairs):
+                    test_dir = os.path.join(args.out, tid, f"test{t_idx}")
+                    print_grid(pair["input"], f"Test {t_idx} input")
+                    print_grid(pair["output"], f"Test {t_idx} expected")
+                    bk_path = generate_test_bk(
+                        pair["input"],
+                        pair["output"],
+                        test_dir,
+                        enable_pi=args.enable_pi,
+                        background_color=None,
+                        pixel_threshold_pct=args.bg_threshold,
+                    )
+                    meta_path = os.path.join(test_dir, "grid_meta.json")
+                    pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0")
+                    print_grid(pred_grid, f"Test {t_idx} predicted")
+                    save_grid_txt(pred_grid, os.path.join(test_dir, "pred.txt"))
+                    exact, pix_acc = evaluate_prediction(pred_grid, pair["output"])
+                    print(f"Test {t_idx} - Exact match? {exact}")
+                    print(f"Test {t_idx} - Pixel accuracy: {pix_acc}")
+
+            print('\n')
+            print(f"Finished {tid}\n")
 
 
 

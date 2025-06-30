@@ -4,6 +4,14 @@ import random
 from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 import traceback
+import subprocess
+import pathlib
+import shutil
+import tempfile
+import textwrap
+import sys
+import ast
+import logging
 from bkbias.extendplugin.objholecount import count_object_holes
 
 # Mapping from ARC color numbers to emoji for debugging displays
@@ -19,6 +27,8 @@ COLOR_MAP = {
     8: "🔹",   # Light Blue
     9: "🔴",   # Dark Red
 }
+
+logger = logging.getLogger(__name__)
 
 
 def grid_to_str(grid: List[List[int]]) -> str:
@@ -792,36 +802,40 @@ def predict_from_prolog(
 ) -> List[List[int]]:
     """Return predicted output grid using ``hyp_path`` and ``bk_path``.
 
-    Parameters
-    ----------
-    hyp_path : str
-        Path to the learned hypothesis (``hyp.pl``).
-    bk_path : str
-        Path to the background knowledge file for the test pair.
-    meta_path : str
-        Path to the JSON file containing grid size metadata.
-    pair_id : str, optional
-        Pair identifier used in BK facts (default ``"p0"``).
+    This implementation invokes ``swipl`` in a subprocess instead of using
+    ``pyswip`` so that it can run in an isolated Prolog environment.
     """
-
-    from pyswip import Prolog  # Imported here to avoid mandatory dependency
-    import numpy as np
 
     meta = json.load(open(meta_path))
     rows, cols = meta.get("output_size", meta.get("size", [0, 0]))
+
+    cmd = [
+        "swipl",
+        "-q",
+        "-s",
+        hyp_path,
+        "-s",
+        bk_path,
+        "-g",
+        f"findall([X,Y,C],outpix({pair_id},X,Y,C),Ls),writeln(Ls),halt.",
+    ]
+
+    run = subprocess.run(cmd, capture_output=True, text=True)
+    if run.returncode != 0:
+        raise RuntimeError(run.stderr)
+
+    output_line = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else "[]"
+    try:
+        data = ast.literal_eval(output_line)
+    except Exception:
+        data = []
+
+    import numpy as np
+
     grid = np.zeros((rows, cols), dtype=int)
-
-    prolog = Prolog()
-    prolog.consult(hyp_path)
-    prolog.consult(bk_path)
-
-    query = f"outpix({pair_id},X,Y,C)"
-    for sol in prolog.query(query):
-        row_idx = int(sol["X"])
-        col_idx = int(sol["Y"])
-        color = int(sol["C"])
-        if 0 <= row_idx < rows and 0 <= col_idx < cols:
-            grid[row_idx][col_idx] = color
+    for row, col, color in data:
+        if 0 <= row < rows and 0 <= col < cols:
+            grid[row][col] = color
 
     return grid.tolist()
 
@@ -919,27 +933,129 @@ def generate_files_from_task(
     return bk_path, bias_path, exs_path
 
 
-def run_popper_from_dir(kb_dir: str):
-    """Run Popper on the given directory containing bk.pl, bias.pl and exs.pl."""
-    import importlib.util  # Ensure importlib.util exists before importing popper
-    from popper.util import Settings
-    from popper.loop import learn_solution
+def run_popper_from_dir(
+    kb_dir: str,
+    *,
+    popper_root: str = "./popper",
+    timeout: int = 600,
+    debug: bool = False,
+    keep_tmp: bool = False,
+    show_output: bool = False,
+) -> Tuple[str | None, Dict[str, Any]]:
+    """Run Popper via its CLI in a dedicated subprocess.
 
-    # settings = Settings(kbpath=kb_dir)
-    settings = Settings(
-        kbpath=kb_dir,     # 必需：ARC 任务目录
-        debug=True,        # 打开最详细的日志
-        show_stats = False,
-        noisy=True ,
-        quiet=False,       # 允许输出
-        # show_stats=True,   # 结束时打印统计
-        timeout=600,       # 整体超时 10 分钟
-        eval_timeout=0.01, # 每条 Prolog 调用 10ms
-        solver="rc2",      # 或 "wmaxcdcl" 等
-        # anytime_solver="wmaxcdcl", # 若你想跑 anytime
-        anytime_timeout=15
-    )
-    return learn_solution(settings)
+    Parameters
+    ----------
+    kb_dir : str
+        Directory containing ``bk.pl``, ``bias.pl`` and ``exs.pl``.
+    popper_root : str, optional
+        Path to the Popper source checkout (default ``"./popper"``).
+    timeout : int, optional
+        Maximum time allowed for Popper in seconds (default ``600``).
+    debug : bool, optional
+        If ``True`` pass ``--debug`` to Popper.
+    keep_tmp : bool, optional
+        Unused, kept for API compatibility.
+
+    Returns
+    -------
+    Tuple[str | None, Dict[str, Any]]
+        Path to the learned hypothesis ``program.pl`` if any and a dictionary
+        with statistics such as ``score``. Popper's output is streamed to
+        ``stdout.txt`` under ``kb_dir`` for real-time inspection.
+    """
+
+    kb_path = pathlib.Path(kb_dir).resolve()
+    assert kb_path.is_dir(), f"{kb_path} not found"
+
+    popper_py = pathlib.Path(popper_root, "popper.py").resolve()
+    if not popper_py.exists():
+        raise FileNotFoundError(popper_py)
+
+    cmd = [sys.executable, str(popper_py), str(kb_path), "--timeout", str(timeout)]
+    if debug:
+        cmd.append("--debug")
+
+    env = os.environ.copy()
+    env.setdefault("OMP_NUM_THREADS", "1")
+    logger.debug("Running Popper command: %s", " ".join(cmd))
+
+    out_dir = kb_path / "popper_run"
+    out_dir.mkdir(exist_ok=True)
+    log_path = out_dir / "stdout.txt"
+
+    stdout_lines: List[str] = []
+    with open(log_path, "w", encoding="utf8") as log_file:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                log_file.write(line)
+                log_file.flush()
+                stdout_lines.append(line)
+                if show_output:
+                    print(line, end="")
+            proc.wait(timeout=timeout + 30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            stdout_lines.append("[timeout]\n")
+            log_file.write("[timeout]\n")
+        finally:
+            if proc.stdout:
+                proc.stdout.close()
+
+        rc = proc.returncode
+
+    run_stdout = "".join(stdout_lines)
+
+    (out_dir / "stderr.txt").write_text("", "utf8")
+    if show_output:
+        print(f"--- Popper stdout for {kb_path.name} ---")
+        print(run_stdout)
+        print(f"--- end stdout for {kb_path.name} ---")
+
+    if rc != 0:
+        logger.debug("Popper exited with code %s", rc)
+        return None, {"rc": rc, "reason": "popper error"}
+
+    prog_path = kb_path / "program.pl"
+    if not prog_path.exists():
+        logger.debug("program.pl not found in %s", kb_path)
+        # Fallback: parse solution from stdout
+        lines = []
+        in_sol = False
+        for ln in run_stdout.splitlines():
+            if "SOLUTION" in ln and "**********" in ln:
+                in_sol = not in_sol
+                continue
+            if in_sol:
+                ln = ln.strip()
+                if not ln or ln.startswith("Precision"):
+                    continue
+                lines.append(ln)
+        if lines:
+            prog_path.write_text("\n".join(lines) + "\n")
+        else:
+            return None, {"rc": 0, "reason": "no_solution"}
+
+    score = None
+    for line in run_stdout.splitlines():
+        if line.startswith("Score:"):
+            try:
+                score = float(line.split(":", 1)[1].strip())
+            except Exception:
+                score = None
+            break
+
+    logger.debug("Popper succeeded with score %s", score)
+    return str(prog_path), {"rc": 0, "score": score}
 
 
 def run_popper_subprocess(kb_dir: str):
@@ -1061,10 +1177,11 @@ if __name__ == "__main__":
     print(f"BK, bias and EXS files saved to {args.out}")
 
     try:
-        prog, score, stats = run_popper_from_dir(args.out)
-        if prog is not None:
-            print("Learned hypothesis:")
-            print(prog)
+        prog_path, info = run_popper_from_dir(args.out)
+        if prog_path is not None:
+            print("Learned hypothesis saved to", prog_path)
+            with open(prog_path) as f:
+                print(f.read())
         else:
             print("Popper finished without finding a solution")
     except Exception as e:
