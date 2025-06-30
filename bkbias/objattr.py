@@ -31,18 +31,38 @@ COLOR_MAP = {
 logger = logging.getLogger(__name__)
 
 
-def grid_to_str(grid: List[List[int]]) -> str:
-    """Return ``grid`` rendered using :data:`COLOR_MAP` emojis."""
-    return "\n".join(
-        "".join(COLOR_MAP.get(val, str(val)) for val in row) for row in grid
-    )
+def grid_to_str(
+    grid: List[List[int]], background_color: int | None = None
+) -> str:
+    """Return ``grid`` rendered using :data:`COLOR_MAP` emojis.
+
+    If ``background_color`` is given and not ``0`` the display will swap the
+    background and black colors so the background is rendered in black. Any
+    original black cells will appear using the background color instead.
+    """
+
+    def disp(val: int) -> str:
+        if background_color is not None and background_color != 0:
+            if val == background_color:
+                val = 0
+            elif val == 0:
+                val = background_color
+        return COLOR_MAP.get(val, str(val))
+
+    lines = ["".join(disp(v) for v in row) for row in grid]
+    return "\n".join(lines)
 
 
-def print_grid(grid: List[List[int]], title: str | None = None) -> None:
+def print_grid(
+    grid: List[List[int]],
+    title: str | None = None,
+    *,
+    background_color: int | None = None,
+) -> None:
     """Print ``grid`` with optional ``title`` using emoji colors."""
     if title:
         print(f"\n{title}")
-    print(grid_to_str(grid))
+    print(grid_to_str(grid, background_color))
 
 
 class IdManager:
@@ -583,8 +603,27 @@ def save_bk(lines: List[str], path: str) -> None:
         f.write("\n".join(grouped))
 
 
-def generate_bias(enable_pi: bool = True) -> str:
-    """Return Popper bias string for predicting output pixels."""
+def generate_bias(
+    enable_pi: bool = True,
+    *,
+    max_clauses: int = 4,
+    max_vars: int = 6,
+    max_body: int = 4,
+) -> str:
+    """Return Popper bias string for predicting output pixels.
+
+    Parameters
+    ----------
+    enable_pi : bool, optional
+        Whether to enable predicate invention.
+    max_clauses : int, optional
+        Value for ``max_clauses`` in the bias (default ``4``).
+    max_vars : int, optional
+        Value for ``max_vars`` in the bias (default ``6``).
+    max_body : int, optional
+        Value for ``max_body`` in the bias (default ``4``).
+    """
+
     bias_lines: List[str] = []
 
 
@@ -604,9 +643,9 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "type(hole2color,(int,color)).",
                 # "direction(hole2color,(in,out)).",
 
-                "max_clauses(4).",
-                "max_vars(6).",
-                "max_body(4).",
+                f"max_clauses({max_clauses}).",
+                f"max_vars({max_vars}).",
+                f"max_body({max_body}).",
                 # "max_rules(4).  ",
             ]
         )
@@ -616,9 +655,9 @@ def generate_bias(enable_pi: bool = True) -> str:
             "type(hole2color,(int,color)).",
             "direction(hole2color,(in,out)).",
 
-            "max_clauses(1).",
-            "max_vars(6).",
-            "max_body(3).",
+            f"max_clauses({max_clauses}).",
+            f"max_vars({max_vars}).",
+            f"max_body({max_body}).",
         ])
 
     bias_lines.extend(
@@ -872,6 +911,9 @@ def generate_files_from_task(
     enable_pi: bool = True,
     pixel_threshold_pct: int = 40,
     background_color: int | None = None,
+    max_clauses: int = 4,
+    max_vars: int = 6,
+    max_body: int = 4,
 ) -> Tuple[str, str, str]:
     """Generate BK, bias and exs files from a task JSON.
 
@@ -893,6 +935,12 @@ def generate_files_from_task(
     enable_pi : bool, optional
         If ``True`` include facts and bias declarations for the invented
         ``hole2color/2`` predicate.
+    max_clauses : int, optional
+        ``max_clauses`` value for the generated bias.
+    max_vars : int, optional
+        ``max_vars`` value for the generated bias.
+    max_body : int, optional
+        ``max_body`` value for the generated bias.
     """
     os.makedirs(output_dir, exist_ok=True)
     task_data = load_task(task) if isinstance(task, str) else task
@@ -915,7 +963,12 @@ def generate_files_from_task(
         background_color=background_color,
         pixel_threshold_pct=pixel_threshold_pct,
     )
-    bias_content = generate_bias(enable_pi=enable_pi)
+    bias_content = generate_bias(
+        enable_pi=enable_pi,
+        max_clauses=max_clauses,
+        max_vars=max_vars,
+        max_body=max_body,
+    )
     if exs_use_pixels:
         exs_lines = outpix_examples(task_data, background_color, neg_factor=3)
     else:
