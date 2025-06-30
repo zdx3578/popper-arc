@@ -595,7 +595,7 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "direction(hole2color,(in,out)).",
 
                 "max_clauses(4).",
-                "max_vars(7).",
+                "max_vars(6).",
                 "max_body(4).",
                 # "max_rules(4).  ",
             ]
