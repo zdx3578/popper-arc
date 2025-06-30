@@ -487,8 +487,8 @@ def objects_to_bk_lines(
     max_dim = 30
 
         # bk_lines = []
-    const_ints  = [1,2,3,4]
-    const_colors= [1,2,3,4]
+    const_ints  = [1,2,3,4,5,6,7,8,9,0]
+    const_colors= [1,2,3,4,5,6,7,8,9,0]
     for k in const_ints:
         lines.append(f"int_{k}({k}).")
     for k in const_colors:
@@ -630,8 +630,8 @@ def generate_bias(enable_pi: bool = True) -> str:
             "direction(objholes,(in,in,out))."
         ]
     )
-    const_ints  = [1,2,3,4]
-    const_colors= [1,2,3,4]
+    const_ints  = [1,2,3,4,5,6,7,8,9,0]
+    const_colors= [1,2,3,4,5,6,7,8,9,0]
 
     for k in const_ints:
         bias_lines.append(f"body_pred(int_{k},1).")

@@ -30,3 +30,5 @@ sudo apt update
 sudo apt install swi-prolog
 
  popper 请安装好
+
+代码改动后请真实运行进行测试
