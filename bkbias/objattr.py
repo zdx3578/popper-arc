@@ -297,18 +297,10 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
     main_color = max(color_counts.items(), key=lambda x: x[1])[0]
     holes = count_object_holes(obj)
     # holemapping = {}
-    hashid = hash(obj_000)
-    # print(hashid)
-    abshashid = abs(hashid)
-    # print(abshashid)
-
-
-    if obj_index is None:
-        obj_id = f"pairid{pair_id}{in_or_out}{abshashid}"
-    else:
-        # obj_id = f"pairid{pair_id}{in_or_out}{obj_index}"
-        obj_id = f"pairid{pair_id}{in_or_out}{abshashid}"
+    hashid = abs(hash(obj_000))
+    obj_id = f"pairid{pair_id}{in_or_out}{hashid}{bounding_box[0]}{bounding_box[1]}"
     obj_shape_ID = managerid.get_id("OBJshape", obj_000)
+    obj_sort_ID = obj_shape_ID
     info = {
         "pair_id": pair_id,
         "in_or_out": in_or_out,
@@ -331,6 +323,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "holes": holes,
         "obj_id": obj_id,
         "obj_shape_ID": obj_shape_ID,
+        "obj_sort_ID": obj_sort_ID,
         "rotated_variants": [("rot_0", obj_00)] + [
             (f"rot_{d}", shift_to_origin(grid_to_object({90: rot90, 180: rot180, 270: rot270}[d](object_to_grid(obj_00)))))
             for d in (90, 180, 270)
@@ -341,6 +334,7 @@ def create_weighted_obj_info(pair_id: int, in_or_out: str, obj: FrozenSet[Tuple[
         "has_parts": [],
         # "mapping"
     }
+    logger.debug("Created obj %s with sort id %s", obj_id, obj_sort_ID)
     return info
 
 
@@ -524,6 +518,22 @@ def objects_to_bk_lines(
     for oid in sorted(obj_ids):
         lines.append(f"constant({oid},obj).")
 
+    # grid sizes and colors
+    seen_pairs: Dict[Tuple[str, int], Tuple[int, int]] = {}
+    color_set = set()
+    for cat in ("input", "output"):
+        for pair_id, objs in all_objects.get(cat, []):
+            if objs:
+                seen_pairs[(cat, pair_id)] = objs[0]["grid_hw"]
+            for info in objs:
+                color_set.add(info["main_color"])
+
+    for (cat, pair_id), (h, w) in seen_pairs.items():
+        lines.append(f"grid_size({cat}_{pair_id},{h},{w}).")
+
+    for color in sorted(color_set):
+        lines.append(f"color_value({color}).")
+
     # Optional invented predicate facts
     if not enable_pi:
         for h, c in hole_color_map.items():
@@ -541,7 +551,26 @@ def objects_to_bk_lines(
 
             if info['holes'] > 0:
                 lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
+            logger.debug("Added pixel facts for object %s", oid)
 
+    # object attribute facts
+    for cat in ("input", "output"):
+        for pair_id, objs in all_objects.get(cat, []):
+            for info in objs:
+                obj_name = prolog_atom(info["obj_id"])
+                lines.append(f"object({obj_name}).")
+                lines.append(f"belongs({obj_name},{cat}{pair_id}).")
+                lines.append(f"x_min({obj_name},{info['left']}).")
+                lines.append(f"y_min({obj_name},{info['top']}).")
+                lines.append(f"width({obj_name},{info['width']}).")
+                lines.append(f"height({obj_name},{info['height']}).")
+                lines.append(f"color({obj_name},{info['main_color']}).")
+                lines.append(f"size({obj_name},{info['size']}).")
+                if 'obj_sort_ID' in info:
+                    lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
+                lines.append(f"holes({obj_name},{info['holes']}).")
+
+    logger.debug("Generated %d BK lines", len(lines))
     return lines
 
 
@@ -645,6 +674,18 @@ def generate_bias(
             "head_pred(outpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
+            "body_pred(grid_size,3).",
+            "body_pred(color_value,1).",
+            "body_pred(object,1).",
+            "body_pred(belongs,2).",
+            "body_pred(x_min,2).",
+            "body_pred(y_min,2).",
+            "body_pred(width,2).",
+            "body_pred(height,2).",
+            "body_pred(color,2).",
+            "body_pred(size,2).",
+            "body_pred(holes,2).",
+            # "body_pred(pix,4).",
             # "body_pred(move,(int,int,int)).",
 
             "type(pair). type(obj).",
@@ -652,6 +693,18 @@ def generate_bias(
             "type(outpix,(pair,coord,coord,color)).",
             "type(inbelongs,(pair,obj,coord,coord)).",
             "type(objholes,(pair,obj,int)).",
+            "type(grid_size,(pair,int,int)).",
+            "type(color_value,(color,)).",
+            "type(object,(obj,)).",
+            "type(belongs,(obj,pair)).",
+            "type(x_min,(obj,int)).",
+            "type(y_min,(obj,int)).",
+            "type(width,(obj,int)).",
+            "type(height,(obj,int)).",
+            "type(color,(obj,color)).",
+            "type(size,(obj,int)).",
+            "type(holes,(obj,int)).",
+            # "type(pix,(pair,coord,coord,color)).",
             "type(sub,(int,int,int)).",
             "type(add,(int,int,int)).",
 
@@ -661,7 +714,19 @@ def generate_bias(
             # "max_body(3).",
             "direction(outpix,(in,in,in,out)).",
             "direction(inbelongs,(in,out,in,in)).",
-            "direction(objholes,(in,in,out))."
+            "direction(objholes,(in,in,out)).",
+            "direction(grid_size,(in,out,out)).",
+            "direction(color_value,(out,)).",
+            "direction(object,(out,)).",
+            "direction(belongs,(in,in)).",
+            "direction(x_min,(in,out)).",
+            "direction(y_min,(in,out)).",
+            "direction(width,(in,out)).",
+            "direction(height,(in,out)).",
+            "direction(color,(in,out)).",
+            "direction(size,(in,out)).",
+            "direction(holes,(in,out)).",
+            # "direction(pix,(in,in,in,out))."
         ]
     )
     const_ints  = [1,2,3,4,5,6,7,8,9,0]
@@ -676,9 +741,8 @@ def generate_bias(
         bias_lines.append(f"type(col_{k},(color,)).")
         bias_lines.append(f"direction(col_{k},(out,)).")
 
-
-
-    return "\n".join(bias_lines)+ "\n"
+    logger.debug("Generated bias with %d predicates", len(bias_lines))
+    return "\n".join(bias_lines) + "\n"
 
 
 
