@@ -509,9 +509,9 @@ def objects_to_bk_lines(
         lines.append(f"constant(p{pid},pair).")
     for n in range(max_dim):
         lines.append(f"constant({n},coord).")
-    for c in range(10):
-        lines.append(f"constant({c},color).")
-        # lines.append(f"constant(color, {c}).")
+    # for c in range(10):
+    #     lines.append(f"constant({c},color).")
+    #     # lines.append(f"constant(color, {c}).")
 
     obj_ids: set[str] = set()
 
@@ -645,12 +645,17 @@ def generate_bias(
             "head_pred(outpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
+            # "body_pred(move,(int,int,int)).",
 
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
             "type(outpix,(pair,coord,coord,color)).",
             "type(inbelongs,(pair,obj,coord,coord)).",
             "type(objholes,(pair,obj,int)).",
+            "type(sub,(int,int,int)).",
+            "type(add,(int,int,int)).",
+
+            # "type(move,(int,int,int)).",
             # "max_vars(6).",
             # "max_clauses(1).",
             # "max_body(3).",

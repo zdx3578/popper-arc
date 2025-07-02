@@ -77,9 +77,10 @@ def solve_task(
         bg_color = determine_background_color(
             task_data, pixel_threshold_pct=bg_threshold, debug=True
         )
-        for idx, pair in enumerate(task_data.get("train", [])):
-            print_grid(pair.get("input"), f"Train {task_id} input {idx}")
-            print_grid(pair.get("output"), f"Train {task_id} output {idx}")
+        if popper_debug :
+            for idx, pair in enumerate(task_data.get("train", [])):
+                print_grid(pair.get("input"), f"Train {task_id} input {idx}")
+                print_grid(pair.get("output"), f"Train {task_id} output {idx}")
         bk_path, bias_path, exs_path = generate_files_from_task(
             task_data,
             out_dir,
@@ -326,7 +327,8 @@ def main() -> None:
                 max_clauses=args.max_clauses,
                 max_vars=args.max_vars,
                 max_body=args.max_body,
-                popper_debug=args.popper_debug,
+                # popper_debug=args.popper_debug,
+                popper_debug=args.debug,
                 show_stdout=(tid == show_stdout_tid),
             )
             future_map[fut] = tid
