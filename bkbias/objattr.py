@@ -31,6 +31,16 @@ COLOR_MAP = {
 logger = logging.getLogger(__name__)
 
 
+def int_atom(v: int) -> str:
+    """Return predicate name for integer constant ``v`` without using '-' sign."""
+    return f"int_{v}" if v >= 0 else f"int_n{abs(v)}"
+
+
+def color_atom(v: int) -> str:
+    """Return predicate name for color constant ``v`` without using '-' sign."""
+    return f"col_{v}" if v >= 0 else f"col_n{abs(v)}"
+
+
 def grid_to_str(grid: List[List[int]]) -> str:
     """Return ``grid`` rendered using :data:`COLOR_MAP` emojis."""
     return "\n".join(
@@ -491,12 +501,13 @@ def objects_to_bk_lines(
     max_dim = 30
 
         # bk_lines = []
-    const_ints  = [1,2,3,4,5,6,7,8,9,0]
-    const_colors= [1,2,3,4,5,6,7,8,9,0]
+    const_ints  = list(range(-9,10))
+    const_colors= list(range(0,9))
+
     for k in const_ints:
-        lines.append(f"int_{k}({k}).")
+        lines.append(f"{int_atom(k)}({k}).")
     for k in const_colors:
-        lines.append(f"col_{k}({k}).")
+        lines.append(f"{color_atom(k)}({k}).")
 
     # constants
     for pid in range(pair_total):
@@ -553,6 +564,9 @@ def objects_to_bk_lines(
                 lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
             logger.debug("Added pixel facts for object %s", oid)
 
+    if include_pixels:
+        lines.extend(inpix_bk_lines(task_data, background_color))
+
     # object attribute facts
     for cat in ("input", "output"):
         for pair_id, objs in all_objects.get(cat, []):
@@ -560,16 +574,17 @@ def objects_to_bk_lines(
                 obj_name = prolog_atom(info["obj_id"])
                 lines.append(f"object({obj_name}).")
                 lines.append(f"belongs({obj_name},{cat}{pair_id}).")
-                lines.append(f"x_min({obj_name},{info['left']}).")
-                lines.append(f"y_min({obj_name},{info['top']}).")
-                lines.append(f"width({obj_name},{info['width']}).")
-                lines.append(f"height({obj_name},{info['height']}).")
+                # lines.append(f"x_min({obj_name},{info['left']}).")
+                # lines.append(f"y_min({obj_name},{info['top']}).")
+                # lines.append(f"width({obj_name},{info['width']}).")
+                # lines.append(f"height({obj_name},{info['height']}).")
                 lines.append(f"color({obj_name},{info['main_color']}).")
                 lines.append(f"size({obj_name},{info['size']}).")
                 if 'obj_sort_ID' in info:
                     lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
                 lines.append(f"holes({obj_name},{info['holes']}).")
 
+    lines.extend(add_sub_bk_lines())
     logger.debug("Generated %d BK lines", len(lines))
     return lines
 
@@ -607,6 +622,7 @@ def group_bk_lines(lines: List[str]) -> List[str]:
 
 def save_bk(lines: List[str], path: str) -> None:
     grouped = group_bk_lines(lines)
+    logger.debug("Saving BK to %s", path)
     with open(path, "w") as f:
         f.write(':- style_check(-discontiguous).\n')
         f.write("\n".join(grouped))
@@ -632,6 +648,14 @@ def generate_bias(
     max_body : int, optional
         Value for ``max_body`` in the bias (default ``4``).
     """
+
+    logger.debug(
+        "Generating bias enable_pi=%s max_clauses=%s max_vars=%s max_body=%s",
+        enable_pi,
+        max_clauses,
+        max_vars,
+        max_body,
+    )
 
     bias_lines: List[str] = []
 
@@ -685,8 +709,10 @@ def generate_bias(
             "body_pred(color,2).",
             "body_pred(size,2).",
             "body_pred(holes,2).",
+            "body_pred(add,3).",
+            "body_pred(sub,3).",
+            # "body_pred(move,4).",
             # "body_pred(pix,4).",
-            # "body_pred(move,(int,int,int)).",
 
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
@@ -705,8 +731,9 @@ def generate_bias(
             "type(size,(obj,int)).",
             "type(holes,(obj,int)).",
             # "type(pix,(pair,coord,coord,color)).",
-            "type(sub,(int,int,int)).",
-            "type(add,(int,int,int)).",
+            "type(sub,(coord,coord,int)).",
+            "type(add,(coord,int,coord)).",
+            # "type(move,(obj,int,int,obj)).",
 
             # "type(move,(int,int,int)).",
             # "max_vars(6).",
@@ -726,20 +753,25 @@ def generate_bias(
             "direction(color,(in,out)).",
             "direction(size,(in,out)).",
             "direction(holes,(in,out)).",
+            "direction(add,(in,in,out)).",
+            "direction(sub,(in,in,out)).",
+            # "direction(move,(in,in,in,out)).",
             # "direction(pix,(in,in,in,out))."
         ]
     )
-    const_ints  = [1,2,3,4,5,6,7,8,9,0]
-    const_colors= [1,2,3,4,5,6,7,8,9,0]
+    const_ints  = list(range(-9,10))
+    const_colors= list(range(0,9))
 
     for k in const_ints:
-        bias_lines.append(f"body_pred(int_{k},1).")
-        bias_lines.append(f"type(int_{k},(int,)).")
-        bias_lines.append(f"direction(int_{k},(out,)).")
+        pred = int_atom(k)
+        bias_lines.append(f"body_pred({pred},1).")
+        bias_lines.append(f"type({pred},(int,)).")
+        bias_lines.append(f"direction({pred},(out,)).")
     for k in const_colors:
-        bias_lines.append(f"body_pred(col_{k},1).")
-        bias_lines.append(f"type(col_{k},(color,)).")
-        bias_lines.append(f"direction(col_{k},(out,)).")
+        pred = color_atom(k)
+        bias_lines.append(f"body_pred({pred},1).")
+        bias_lines.append(f"type({pred},(color,)).")
+        bias_lines.append(f"direction({pred},(out,)).")
 
     logger.debug("Generated bias with %d predicates", len(bias_lines))
     return "\n".join(bias_lines) + "\n"
@@ -836,7 +868,41 @@ def outpix_examples(task_data: Dict[str, Any], background_color: int | None = No
     return lines
 
 
+def inpix_bk_lines(task_data: Dict[str, Any], background_color: int | None = None) -> List[str]:
+    """Return ``inpix`` facts for all input grids."""
+    if background_color is None:
+        background_color = determine_background_color(task_data)
+
+    lines: List[str] = []
+    for pair_id, pair in enumerate(task_data.get("train", [])):
+        grid = pair["input"]
+        for r, row in enumerate(grid):
+            for c, color in enumerate(row):
+                if background_color is not None and color == background_color:
+                    continue
+                lines.append(f"inpix(p{pair_id},{r},{c},{color}).")
+    return lines
+
+
+def add_sub_bk_lines(limit: int = 10) -> List[str]:
+    """Return base ``add`` and ``sub`` facts up to ``limit``."""
+    lines: List[str] = []
+    rng = range(-limit, limit + 1)
+    for x in rng:
+        lines.append(f"add({x},0,{x}).")
+    for y in rng:
+        lines.append(f"add(0,{y},{y}).")
+    for x in rng:
+        if x + 1 in rng:
+            lines.append(f"add(1,{x},{x+1}).")
+        if x - 1 in rng:
+            lines.append(f"add(-1,{x},{x-1}).")
+    lines.append("sub(X,X2,DX):-add(DX,X,X2).")
+    return lines
+
+
 def save_lines(lines: List[str], path: str) -> None:
+    logger.debug("Saving %d lines to %s", len(lines), path)
     with open(path, "w") as f:
         if lines:
             f.write("\n".join(lines) + "\n")
@@ -1028,10 +1094,13 @@ def generate_files_from_task(
     exs_path = os.path.join(output_dir, "exs.pl")
 
     save_bk(bk_lines, bk_path)
+    logger.debug("Bias content length %d", len(bias_content.splitlines()))
     with open(bias_path, "w") as f:
         f.write(bias_content)
+    logger.debug("Saved bias to %s", bias_path)
     save_lines(exs_lines, exs_path)
-
+    logger.debug("Saved examples to %s", exs_path)
+    logger.debug("Generation complete: %s %s %s", bk_path, bias_path, exs_path)
     return bk_path, bias_path, exs_path
 
 
