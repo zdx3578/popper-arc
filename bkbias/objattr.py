@@ -13,6 +13,21 @@ import sys
 import ast
 import logging
 from bkbias.extendplugin.objholecount import count_object_holes
+from .genbias import generate_bias as _generate_bias, group_bias_lines as _group_bias_lines
+from .genbk import (
+    objects_to_bk_lines as _objects_to_bk_lines,
+    group_bk_lines as _group_bk_lines,
+    save_bk as _save_bk,
+    inpix_bk_lines as _inpix_bk_lines,
+    add_sub_bk_lines as _add_sub_bk_lines,
+)
+from .genexs import (
+    outpix_examples as _outpix_examples,
+    objects_to_exs_lines as _objects_to_exs_lines,
+    nonbg_pixels as _nonbg_pixels,
+    add_negatives as _add_negatives,
+    grids_to_pix_lines as _grids_to_pix_lines,
+)
 
 # Mapping from ARC color numbers to emoji for debugging displays
 COLOR_MAP = {
@@ -457,448 +472,64 @@ def compute_hole_color_mapping(
     return mapping
 
 
-def objects_to_bk_lines(
-    task_data: Dict[str, Any],
-    all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]],
-    include_pixels: bool = True,
-    *,
-    enable_pi: bool = True,
-    background_color: int | None = None,
-    pixel_threshold_pct: int = 40,
-) -> List[str]:
-    """Convert extracted object infos into Popper background facts.
-
-    Parameters
-    ----------
-    task_data : Dict[str, Any]
-        The loaded ARC task.
-    all_objects : Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]
-        Objects extracted from the task.
-    include_pixels : bool, optional
-        If ``True`` (default) include ``inbelongs/4`` pixel facts mapping
-        objects to their coordinates.  When ``False`` these facts are
-        omitted, producing a purely object level BK.
-    """
-    lines: List[str] = []
-    hole_color_map = compute_hole_color_mapping(
-        task_data,
-        background_color=background_color,
-        pixel_threshold_pct=pixel_threshold_pct,
-        debug=False,
-    )
-
-    pair_total = len(task_data.get("train", []))
-    max_dim = 0
-    colors = set()
-    for pair in task_data.get("train", []):
-        for grid in (pair["input"], pair["output"]):
-            if not grid:
-                continue
-            max_dim = max(max_dim, len(grid), len(grid[0]))
-            colors.update({c for row in grid for c in row})
-
-    # max_dim = min(max_dim, 30)
-    max_dim = 30
-
-        # bk_lines = []
-    const_ints  = list(range(-9,10))
-    const_colors= list(range(0,9))
-
-    for k in const_ints:
-        lines.append(f"{int_atom(k)}({k}).")
-    for k in const_colors:
-        lines.append(f"{color_atom(k)}({k}).")
-
-    # constants
-    for pid in range(pair_total):
-        lines.append(f"constant(p{pid},pair).")
-    for n in range(max_dim):
-        lines.append(f"constant({n},coord).")
-    # for c in range(10):
-    #     lines.append(f"constant({c},color).")
-    #     # lines.append(f"constant(color, {c}).")
-
-    obj_ids: set[str] = set()
-
-    for pair_id, objs in all_objects.get("input", []):
-        for info in objs:
-            obj_ids.add(info["obj_id"])
-    for n in range(10):
-        lines.append(f"constant({n},int).")
-        # lines.append(f"constant(int, {n}).")
-    for oid in sorted(obj_ids):
-        lines.append(f"constant({oid},obj).")
-
-    # grid sizes and colors
-    seen_pairs: Dict[Tuple[str, int], Tuple[int, int]] = {}
-    color_set = set()
-    for cat in ("input", "output"):
-        for pair_id, objs in all_objects.get(cat, []):
-            if objs:
-                seen_pairs[(cat, pair_id)] = objs[0]["grid_hw"]
-            for info in objs:
-                color_set.add(info["main_color"])
-
-    for (cat, pair_id), (h, w) in seen_pairs.items():
-        lines.append(f"grid_size({cat}_{pair_id},{h},{w}).")
-
-    for color in sorted(color_set):
-        lines.append(f"color_value({color}).")
-
-    # Optional invented predicate facts
-    if not enable_pi:
-        for h, c in hole_color_map.items():
-            lines.append(f"hole2color({h},{c}).")
-            lines.append(f"constant(int, {h}).")
-            # lines.append(f"constant(color, {c}).")
-
-    # in-grid pixel-object relations and hole counts
-    for pair_id, objs in all_objects.get("input", []):
-        for info in objs:
-            oid = info["obj_id"]
-            if include_pixels:
-                for _, (r, c) in info["obj"]:
-                    lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
-
-            if info['holes'] > 0:
-                lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
-            logger.debug("Added pixel facts for object %s", oid)
-
-    if include_pixels:
-        lines.extend(inpix_bk_lines(task_data, background_color))
-
-    # object attribute facts
-    for cat in ("input", "output"):
-        for pair_id, objs in all_objects.get(cat, []):
-            for info in objs:
-                obj_name = prolog_atom(info["obj_id"])
-                lines.append(f"object({obj_name}).")
-                lines.append(f"belongs({obj_name},{cat}{pair_id}).")
-                # lines.append(f"x_min({obj_name},{info['left']}).")
-                # lines.append(f"y_min({obj_name},{info['top']}).")
-                # lines.append(f"width({obj_name},{info['width']}).")
-                # lines.append(f"height({obj_name},{info['height']}).")
-                lines.append(f"color({obj_name},{info['main_color']}).")
-                lines.append(f"size({obj_name},{info['size']}).")
-                if 'obj_sort_ID' in info:
-                    lines.append(f"objsortid({obj_name},{info['obj_sort_ID']}).")
-                lines.append(f"holes({obj_name},{info['holes']}).")
-
-    lines.extend(add_sub_bk_lines())
-    logger.debug("Generated %d BK lines", len(lines))
-    return lines
+def objects_to_bk_lines(*args, **kwargs):
+    """Wrapper calling :func:`genbk.objects_to_bk_lines`."""
+    return _objects_to_bk_lines(*args, **kwargs)
 
 
 def group_bk_lines(lines: List[str]) -> List[str]:
-    """Group BK facts by predicate name for better readability."""
-    from collections import defaultdict
-    import re
-
-    bucket: Dict[str, List[str]] = defaultdict(list)
-    directives: List[str] = []
-
-    for ln in lines:
-        stripped = ln.strip()
-        if not stripped:
-            continue
-        if stripped.startswith('%'):
-            continue
-        if stripped.startswith(':-'):
-            directives.append(ln)
-            continue
-        m = re.match(r'([a-zA-Z_][A-Za-z0-9_]*)\s*\(', stripped)
-        if m:
-            bucket[m.group(1)].append(ln)
-        else:
-            bucket[''].append(ln)
-
-    grouped: List[str] = directives.copy()
-    for pred in sorted(bucket):
-        if pred:
-            grouped.append(f"% === {pred} ===")
-        grouped.extend(bucket[pred])
-    return grouped
+    """Wrapper calling :func:`genbk.group_bk_lines`."""
+    return _group_bk_lines(lines)
 
 
 def save_bk(lines: List[str], path: str) -> None:
-    grouped = group_bk_lines(lines)
-    logger.debug("Saving BK to %s", path)
-    with open(path, "w") as f:
-        f.write(':- style_check(-discontiguous).\n')
-        f.write("\n".join(grouped))
+    """Wrapper calling :func:`genbk.save_bk`."""
+    _save_bk(lines, path)
 
 
-def generate_bias(
-    enable_pi: bool = True,
-    *,
-    max_clauses: int = 4,
-    max_vars: int = 6,
-    max_body: int = 4,
-) -> str:
-    """Return Popper bias string for predicting output pixels.
+def generate_bias(*args, **kwargs) -> str:
+    """Wrapper calling :func:`genbias.generate_bias`."""
+    return _generate_bias(*args, **kwargs)
 
-    Parameters
-    ----------
-    enable_pi : bool, optional
-        Whether to enable predicate invention.
-    max_clauses : int, optional
-        Value for ``max_clauses`` in the bias (default ``4``).
-    max_vars : int, optional
-        Value for ``max_vars`` in the bias (default ``6``).
-    max_body : int, optional
-        Value for ``max_body`` in the bias (default ``4``).
-    """
-
-    logger.debug(
-        "Generating bias enable_pi=%s max_clauses=%s max_vars=%s max_body=%s",
-        enable_pi,
-        max_clauses,
-        max_vars,
-        max_body,
-    )
-
-    bias_lines: List[str] = []
+def group_bias_lines(lines: List[str]) -> List[str]:
+    """Wrapper calling :func:`genbias.group_bias_lines`."""
+    return _group_bias_lines(lines)
 
 
 
-    if enable_pi:
-        bias_lines.extend(
-            [
-                "enable_pi.",
-                "max_inv_preds(1).",
-                "max_inv_arity(3).",
-                "max_inv_body(3).",
-                "max_inv_clauses(4).",
+def grids_to_pix_lines(*args, **kwargs) -> List[str]:
+    """Wrapper calling :func:`genexs.grids_to_pix_lines`."""
+    return _grids_to_pix_lines(*args, **kwargs)
 
 
-                # "body_pred(hole2color,2).",
-                # "invent_pred(hole2color,(int,color)).",
-                # "type(hole2color,(int,color)).",
-                # "direction(hole2color,(in,out)).",
-
-                f"max_clauses({max_clauses}).",
-                f"max_vars({max_vars}).",
-                f"max_body({max_body}).",
-                # "max_rules(4).  ",
-            ]
-        )
-    else:
-        bias_lines.extend([
-            "body_pred(hole2color,2).",
-            "type(hole2color,(int,color)).",
-            "direction(hole2color,(in,out)).",
-
-            f"max_clauses({max_clauses}).",
-            f"max_vars({max_vars}).",
-            f"max_body({max_body}).",
-        ])
-
-    bias_lines.extend(
-        [
-            "head_pred(outpix,4).",
-            "body_pred(inbelongs,4).",
-            "body_pred(objholes,3).",
-            "body_pred(grid_size,3).",
-            "body_pred(color_value,1).",
-            "body_pred(object,1).",
-            "body_pred(belongs,2).",
-            "body_pred(x_min,2).",
-            "body_pred(y_min,2).",
-            "body_pred(width,2).",
-            "body_pred(height,2).",
-            "body_pred(color,2).",
-            "body_pred(size,2).",
-            "body_pred(holes,2).",
-            "body_pred(add,3).",
-            "body_pred(sub,3).",
-            # "body_pred(move,4).",
-            # "body_pred(pix,4).",
-
-            "type(pair). type(obj).",
-            "type(coord). type(color). type(int).",
-            "type(outpix,(pair,coord,coord,color)).",
-            "type(inbelongs,(pair,obj,coord,coord)).",
-            "type(objholes,(pair,obj,int)).",
-            "type(grid_size,(pair,int,int)).",
-            "type(color_value,(color,)).",
-            "type(object,(obj,)).",
-            "type(belongs,(obj,pair)).",
-            "type(x_min,(obj,int)).",
-            "type(y_min,(obj,int)).",
-            "type(width,(obj,int)).",
-            "type(height,(obj,int)).",
-            "type(color,(obj,color)).",
-            "type(size,(obj,int)).",
-            "type(holes,(obj,int)).",
-            # "type(pix,(pair,coord,coord,color)).",
-            "type(sub,(coord,coord,int)).",
-            "type(add,(coord,int,coord)).",
-            # "type(move,(obj,int,int,obj)).",
-
-            # "type(move,(int,int,int)).",
-            # "max_vars(6).",
-            # "max_clauses(1).",
-            # "max_body(3).",
-            "direction(outpix,(in,in,in,out)).",
-            "direction(inbelongs,(in,out,in,in)).",
-            "direction(objholes,(in,in,out)).",
-            "direction(grid_size,(in,out,out)).",
-            "direction(color_value,(out,)).",
-            "direction(object,(out,)).",
-            "direction(belongs,(in,in)).",
-            "direction(x_min,(in,out)).",
-            "direction(y_min,(in,out)).",
-            "direction(width,(in,out)).",
-            "direction(height,(in,out)).",
-            "direction(color,(in,out)).",
-            "direction(size,(in,out)).",
-            "direction(holes,(in,out)).",
-            "direction(add,(in,in,out)).",
-            "direction(sub,(in,in,out)).",
-            # "direction(move,(in,in,in,out)).",
-            # "direction(pix,(in,in,in,out))."
-        ]
-    )
-    const_ints  = list(range(-9,10))
-    const_colors= list(range(0,9))
-
-    for k in const_ints:
-        pred = int_atom(k)
-        bias_lines.append(f"body_pred({pred},1).")
-        bias_lines.append(f"type({pred},(int,)).")
-        bias_lines.append(f"direction({pred},(out,)).")
-    for k in const_colors:
-        pred = color_atom(k)
-        bias_lines.append(f"body_pred({pred},1).")
-        bias_lines.append(f"type({pred},(color,)).")
-        bias_lines.append(f"direction({pred},(out,)).")
-
-    logger.debug("Generated bias with %d predicates", len(bias_lines))
-    return "\n".join(bias_lines) + "\n"
+def objects_to_exs_lines(*args, **kwargs) -> List[str]:
+    """Wrapper calling :func:`genexs.objects_to_exs_lines`."""
+    return _objects_to_exs_lines(*args, **kwargs)
 
 
-
-def grids_to_pix_lines(task_data: Dict[str, Any],
-                      background_color: int | None = None) -> List[str]:
-    """Convert all grids in the task to pixel facts lines."""
-    if background_color is None:
-        background_color = determine_background_color(task_data)
-
-    pix_lines: List[str] = []
-
-    for pair_id, pair in enumerate(task_data.get("train", [])):
-        for kind in ("input", "output"):
-            grid = pair[kind]
-            label = f"pairid{pair_id}_{'in' if kind=='input' else 'out'}"
-            for i, row in enumerate(grid):
-                for j, color in enumerate(row):
-                    if background_color is not None and color == background_color:
-                        continue
-                    pix_lines.append(f"pix({label},{i},{j},{color}).")
-    return pix_lines
+def nonbg_pixels(*args, **kwargs):
+    """Wrapper calling :func:`genexs.nonbg_pixels`."""
+    return _nonbg_pixels(*args, **kwargs)
 
 
-def objects_to_exs_lines(all_objects: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]]) -> List[str]:
-    """Return positive examples describing input/output object mappings."""
-    lines: List[str] = []
-    inputs = {pid: objs for pid, objs in all_objects.get("input", [])}
-    outputs = {pid: objs for pid, objs in all_objects.get("output", [])}
-
-    for pair_id in sorted(inputs):
-        in_names = [prolog_atom(info["obj_id"]) for info in inputs.get(pair_id, [])]
-        out_names = [prolog_atom(info["obj_id"]) for info in outputs.get(pair_id, [])]
-        in_list = "[" + ",".join(in_names) + "]"
-        out_list = "[" + ",".join(out_names) + "]"
-        lines.append(f"pos(target({in_list},{out_list})).")
-
-    return lines
+def add_negatives(*args, **kwargs) -> None:
+    """Wrapper calling :func:`genexs.add_negatives`."""
+    return _add_negatives(*args, **kwargs)
 
 
-def nonbg_pixels(grid: List[List[int]], bg_color: int | None) -> List[Tuple[Tuple[int, int], int]]:
-    """Return coordinates and colors of pixels not equal to ``bg_color``."""
-    pixels = []
-    for r, row in enumerate(grid):
-        for c, color in enumerate(row):
-            if bg_color is None or color != bg_color:
-                pixels.append(((r, c), color))
-    return pixels
+def outpix_examples(*args, **kwargs) -> List[str]:
+    """Wrapper calling :func:`genexs.outpix_examples`."""
+    return _outpix_examples(*args, **kwargs)
 
 
-def add_negatives(
-    pair_id: int,
-    out_grid: List[List[int]],
-    bg_color: int | None,
-    exs: List[str],
-    k_factor: int = 2,
-) -> None:
-    """Append negative outpix examples to ``exs``.
-
-    The negatives are generated using coordinates of existing positive pixels
-    but with a randomly chosen wrong color.
-    """
-
-    pos_pixels = nonbg_pixels(out_grid, bg_color)
-    colors = list(range(10))
-
-    for (x, y), true_c in pos_pixels:
-        wrong_colors = [c for c in colors if c != true_c and c != bg_color]
-        random.shuffle(wrong_colors)
-        for wrong_c in wrong_colors[:k_factor]:
-            exs.append(f"neg(outpix(p{pair_id},{x},{y},{wrong_c})).")
+def inpix_bk_lines(*args, **kwargs) -> List[str]:
+    """Wrapper calling :func:`genbk.inpix_bk_lines`."""
+    return _inpix_bk_lines(*args, **kwargs)
 
 
-def outpix_examples(task_data: Dict[str, Any], background_color: int | None = None, neg_factor: int = 2) -> List[str]:
-    """Generate positive and negative examples for output pixels."""
-    if background_color is None:
-        background_color = determine_background_color(task_data)
-
-    lines: List[str] = []
-    lines.append(f":- discontiguous neg/1.")
-    lines.append(f":- discontiguous pos/1.")
-    for pair_id, pair in enumerate(task_data.get("train", [])):
-        grid = pair["output"]
-        for r, row in enumerate(grid):
-            for c, color in enumerate(row):
-                if background_color is not None and color == background_color:
-                    continue
-                lines.append(f"pos(outpix(p{pair_id},{r},{c},{color})).")
-
-        add_negatives(pair_id, grid, background_color, lines, neg_factor)
-
-    return lines
-
-
-def inpix_bk_lines(task_data: Dict[str, Any], background_color: int | None = None) -> List[str]:
-    """Return ``inpix`` facts for all input grids."""
-    if background_color is None:
-        background_color = determine_background_color(task_data)
-
-    lines: List[str] = []
-    for pair_id, pair in enumerate(task_data.get("train", [])):
-        grid = pair["input"]
-        for r, row in enumerate(grid):
-            for c, color in enumerate(row):
-                if background_color is not None and color == background_color:
-                    continue
-                lines.append(f"inpix(p{pair_id},{r},{c},{color}).")
-    return lines
-
-
-def add_sub_bk_lines(limit: int = 10) -> List[str]:
-    """Return base ``add`` and ``sub`` facts up to ``limit``."""
-    lines: List[str] = []
-    rng = range(-limit, limit + 1)
-    for x in rng:
-        lines.append(f"add({x},0,{x}).")
-    for y in rng:
-        lines.append(f"add(0,{y},{y}).")
-    for x in rng:
-        if x + 1 in rng:
-            lines.append(f"add(1,{x},{x+1}).")
-        if x - 1 in rng:
-            lines.append(f"add(-1,{x},{x-1}).")
-    lines.append("sub(X,X2,DX):-add(DX,X,X2).")
-    return lines
+def add_sub_bk_lines(*args, **kwargs) -> List[str]:
+    """Wrapper calling :func:`genbk.add_sub_bk_lines`."""
+    return _add_sub_bk_lines(*args, **kwargs)
 
 
 def save_lines(lines: List[str], path: str) -> None:
