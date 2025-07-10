@@ -936,7 +936,7 @@ def run_popper_from_dir(kb_dir: str):
         timeout=600,       # 整体超时 10 分钟
         eval_timeout=0.01, # 每条 Prolog 调用 10ms
         solver="rc2",      # 或 "wmaxcdcl" 等
-        # anytime_solver="wmaxcdcl", # 若你想跑 anytime
+        anytime_solver="nuwls", 
         anytime_timeout=15
     )
     return learn_solution(settings)
