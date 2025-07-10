@@ -34,12 +34,13 @@ def add_sub_bk_lines(limit: int = 10) -> List[str]:
     """Return ``coord_const`` facts and all addition triples within ``[-limit,limit]``."""
     lines: List[str] = []
     rng = range(-limit, limit + 1)
+    lim2 = 4
     for n in rng:
         lines.append(f"coord_const({n}).")
     for dx in rng:
         for x in rng:
             x2 = x + dx
-            if -limit <= x2 <= limit:
+            if -lim2 <= x2 <= lim2:
                 lines.append(f"add({dx},{x},{x2}).")
     lines.append("sub(X,X2,DX):-add(DX,X,X2).")
     return lines
