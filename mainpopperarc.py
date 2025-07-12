@@ -46,6 +46,15 @@ def count_non_background_pixels(task_data: Dict[str, Any], pixel_threshold_pct: 
     return count
 
 
+def save_task_counts(task_counts: List[Tuple[str, int]], path: str) -> None:
+    """Save sorted ``task_counts`` list to ``path`` for offline analysis."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf8") as f:
+        for tid, cnt in task_counts:
+            f.write(f"{tid} {cnt}\n")
+    logger.debug("Saved task counts to %s", path)
+
+
 def solve_task(
     task_id: str,
     task_data: Dict[str, Any],
@@ -286,6 +295,9 @@ def main() -> None:
         cnt = count_non_background_pixels(tdata, args.bg_threshold)
         task_counts.append((tid, cnt))
     task_counts.sort(key=lambda x: x[1])
+
+    sort_path = os.path.join(Path(__file__).resolve().parent, "analy", "task_counts.txt")
+    save_task_counts(task_counts, sort_path)
 
     os.makedirs(args.out, exist_ok=True)
 
