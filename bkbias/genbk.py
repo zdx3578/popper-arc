@@ -98,7 +98,15 @@ def objects_to_bk_lines(
         debug=False,
     )
     pair_total = len(task_data.get("train", []))
-    max_dim = 30
+    max_dim = 0
+    colors = set()
+    for pair in task_data.get("train", []):
+        for grid in (pair["input"], pair["output"]):
+            if not grid:
+                continue
+            max_dim = max(max_dim, len(grid), len(grid[0]))
+            colors.update({c for row in grid for c in row})
+            
     const_ints = list(range(-9, 10))
     const_colors = list(range(0, 9))
     for k in const_ints:
