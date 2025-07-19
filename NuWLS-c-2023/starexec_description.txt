@@ -1,0 +1,5 @@
+NuWLS-c-2023: an incomplete solver by Yi Chu, Email: chuyi2020@iscas.ac.cn
+
+./bin/starexec_run_default-runsolver instance-name
+
+./bin/starexec_run_short-runsolver instance-name
