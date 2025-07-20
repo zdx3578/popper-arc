@@ -137,6 +137,10 @@ def main() -> None:
     exs_use_pixels = None if args.exs_repr is None else args.exs_repr == "pixels"
 
     train_tasks, train_sols, eval_tasks, eval_sols, test_tasks = prepare_arc_data()
+    evaltesttask = True
+    if evaltesttask:
+        train_tasks, train_sols =   eval_tasks, eval_sols
+
     task_counts: List[Tuple[str, int]] = []
     for tid, tdata in train_tasks.items():
         cnt = count_non_background_pixels(tdata, args.bg_threshold)

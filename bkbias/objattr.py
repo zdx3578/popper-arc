@@ -528,9 +528,43 @@ def objects_to_bk_lines(
             if include_pixels:
                 for _, (r, c) in info["obj"]:
                     lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
+            if info['holes'] is not None:
+                if info['holes'] >= 0:
+                    lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
+            # color = info["main_color"]
+            # is_gray = "true" if color == 5 else "false"
+            # lines.append(f"obj_color_info(p{pair_id},{oid},{color},{is_gray}).")
+            color = info["main_color"]
+            if color == 5:
+                # 对象是灰色
+                lines.append(f"is_gray_obj(p{pair_id},{oid},{color}).")
+            else:
+                # 对象非灰色，同时输出它的颜色
+                lines.append(f"is_color_obj(p{pair_id},{oid},{color}).")
 
-            if info['holes'] > 0:
-                lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
+        # 分析相同洞数的对象事实
+        # 按颜色分类对象：灰色对象(颜色5)和其他颜色对象
+        gray_objs = []
+        color_objs = []
+
+        for info in objs:
+            oid = info["obj_id"]
+            holes = info['holes']
+            main_color = info['main_color']
+            if info['holes'] is not None:
+                if holes >= 0:
+                    if main_color == 5:  # 灰色对象
+                        gray_objs.append((oid, holes))
+                    else:  # 其他颜色对象
+                        color_objs.append((oid, holes, main_color))
+
+        # 生成相同洞数但不同对象的事实
+        # 第一个参数：有色对象，第二个参数：灰色对象，最后一个参数：有色对象的颜色
+        for or_, hr, cr in color_objs:
+            for og, hg in gray_objs:
+                if hg == hr:  # 洞数相同
+                    lines.append(f"same_hole_but_diff_obj(p{pair_id},{or_},{og},{hr},{cr}).")
+
 
     return lines
 
@@ -583,10 +617,10 @@ def generate_bias(enable_pi: bool = True) -> str:
         bias_lines.extend(
             [
                 "enable_pi.",
-                "max_inv_preds(1).",
-                "max_inv_arity(3).",
-                "max_inv_body(3).",
-                "max_inv_clauses(4).",
+                # "max_inv_preds(1).",
+                # "max_inv_arity(3).",
+                # "max_inv_body(3).",
+                # "max_inv_clauses(4).",
 
 
                 # "body_pred(hole2color,2).",
@@ -594,28 +628,43 @@ def generate_bias(enable_pi: bool = True) -> str:
                 # "type(hole2color,(int,color)).",
                 # "direction(hole2color,(in,out)).",
 
-                "max_clauses(4).",
-                "max_vars(6).",
-                "max_body(4).",
+                "max_clauses(2).",
+                "max_vars(8).",
+                "max_body(3).",
                 # "max_rules(4).  ",
             ]
         )
-    else:
-        bias_lines.extend([
-            "body_pred(hole2color,2).",
-            "type(hole2color,(int,color)).",
-            "direction(hole2color,(in,out)).",
+    # else:
+    # bias_lines.extend([
+    #     "body_pred(hole2color,2).",
+    #     "type(hole2color,(int,color)).",
+    #     "direction(hole2color,(in,out)).",
 
-            "max_clauses(1).",
-            "max_vars(6).",
-            "max_body(3).",
-        ])
+    #     # "max_clauses(1).",
+    #     # "max_vars(6).",
+    #     # "max_body(3).",
+    # ])
 
     bias_lines.extend(
         [
             "head_pred(outpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
+            "body_pred(same_hole_but_diff_obj,5).",
+            "type(same_hole_but_diff_obj,(pair,obj,obj,int,color)).",
+            "direction(same_hole_but_diff_obj,(in,in,out,out,out)).",
+
+            # "body_pred(obj_color_info,4).",
+            # "type(obj_color_info,(pair,obj,color,bool)).",
+            # "direction(obj_color_info,(in,in,out,out)).",
+
+            "body_pred(is_gray_obj,3).",
+            "type(is_gray_obj,(pair,obj,color)).",
+            "direction(is_gray_obj,(in,out,out)).",
+
+            "body_pred(is_color_obj,3).",
+            "type(is_color_obj,(pair,obj,color)).",
+            "direction(is_color_obj,(in,out, out)).",
 
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
@@ -637,10 +686,10 @@ def generate_bias(enable_pi: bool = True) -> str:
         bias_lines.append(f"body_pred(int_{k},1).")
         bias_lines.append(f"type(int_{k},(int,)).")
         bias_lines.append(f"direction(int_{k},(out,)).")
-    for k in const_colors:
-        bias_lines.append(f"body_pred(col_{k},1).")
-        bias_lines.append(f"type(col_{k},(color,)).")
-        bias_lines.append(f"direction(col_{k},(out,)).")
+    # for k in const_colors:
+    #     bias_lines.append(f"body_pred(col_{k},1).")
+    #     bias_lines.append(f"type(col_{k},(color,)).")
+    #     bias_lines.append(f"direction(col_{k},(out,)).")
 
 
 
@@ -933,11 +982,11 @@ def run_popper_from_dir(kb_dir: str):
         noisy=True ,
         quiet=False,       # 允许输出
         # show_stats=True,   # 结束时打印统计
-        timeout=600,       # 整体超时 10 分钟
+        timeout=3600,       # 整体超时 10 分钟
         eval_timeout=0.01, # 每条 Prolog 调用 10ms
         solver="rc2",      # 或 "wmaxcdcl" 等
-        anytime_solver="nuwls", 
-        anytime_timeout=15
+        anytime_solver="nuwls", # 若你想跑 anytime
+        anytime_timeout=15,
     )
     return learn_solution(settings)
 
