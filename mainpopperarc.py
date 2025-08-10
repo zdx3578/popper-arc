@@ -137,7 +137,7 @@ def main() -> None:
     exs_use_pixels = None if args.exs_repr is None else args.exs_repr == "pixels"
 
     train_tasks, train_sols, eval_tasks, eval_sols, test_tasks = prepare_arc_data()
-    evaltesttask = True
+    evaltesttask = False
     if evaltesttask:
         train_tasks, train_sols =   eval_tasks, eval_sols
 

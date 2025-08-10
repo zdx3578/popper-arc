@@ -528,6 +528,8 @@ def objects_to_bk_lines(
             if include_pixels:
                 for _, (r, c) in info["obj"]:
                     lines.append(f"inbelongs(p{pair_id},{oid},{r},{c}).")
+                    # lines.append(f"(p{pair_id},,{r},{c}).")
+
             if info['holes'] is not None:
                 if info['holes'] >= 0:
                     lines.append(f"objholes(p{pair_id},{oid},{info['holes']}).")
@@ -564,6 +566,8 @@ def objects_to_bk_lines(
             for og, hg in gray_objs:
                 if hg == hr:  # 洞数相同
                     lines.append(f"same_hole_but_diff_obj(p{pair_id},{or_},{og},{hr},{cr}).")
+
+    lines.extend(inpix_bk_lines(task_data, background_color))
 
 
     return lines
@@ -695,7 +699,18 @@ def generate_bias(enable_pi: bool = True) -> str:
 
     return "\n".join(bias_lines)+ "\n"
 
-
+def inpix_bk_lines(task_data: Dict[str, any], background_color: int | None = None) -> List[str]:
+    if background_color is None:
+        background_color = determine_background_color(task_data)
+    lines: List[str] = []
+    for pair_id, pair in enumerate(task_data.get("train", [])):
+        grid = pair["input"]
+        for r, row in enumerate(grid):
+            for c, color in enumerate(row):
+                if background_color is not None and color == background_color:
+                    continue
+                lines.append(f"inpix(p{pair_id},{r},{c},{color}).")
+    return lines
 
 def grids_to_pix_lines(task_data: Dict[str, Any],
                       background_color: int | None = None) -> List[str]:
