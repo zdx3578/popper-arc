@@ -38,12 +38,12 @@ direction(int_1,(out,)).
 body_pred(int_2,1).
 type(int_2,(int,)).
 direction(int_2,(out,)).
-# body_pred(int_3,1).
-# type(int_3,(int,)).
-# direction(int_3,(out,)).
-# body_pred(int_4,1).
-# type(int_4,(int,)).
-# direction(int_4,(out,)).
+% body_pred(int_3,1).
+% type(int_3,(int,)).
+% direction(int_3,(out,)).
+% body_pred(int_4,1).
+% type(int_4,(int,)).
+% direction(int_4,(out,)).
 % body_pred(int_5,1).
 % type(int_5,(int,)).
 % direction(int_5,(out,)).
