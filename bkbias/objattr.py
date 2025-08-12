@@ -5,6 +5,7 @@ from collections import defaultdict, deque
 from typing import List, Tuple, Dict, Any, FrozenSet
 import traceback
 from bkbias.extendplugin.objholecount import count_object_holes
+from bkbias.bk import output_bk_diagline
 
 # Mapping from ARC color numbers to emoji for debugging displays
 COLOR_MAP = {
@@ -483,8 +484,9 @@ def objects_to_bk_lines(
             max_dim = max(max_dim, len(grid), len(grid[0]))
             colors.update({c for row in grid for c in row})
 
-    # max_dim = min(max_dim, 30)
-    max_dim = 30
+    max_dim = min(max_dim, 30)
+    # max_dim = 30
+    lines.append(output_bk_diagline())
 
         # bk_lines = []
     const_ints  = [1,2,3,4,5,6,7,8,9,0]
@@ -570,6 +572,7 @@ def objects_to_bk_lines(
     lines.extend(inpix_bk_lines(task_data, background_color))
 
 
+
     return lines
 
 
@@ -610,14 +613,15 @@ def save_bk(lines: List[str], path: str) -> None:
         f.write(':- style_check(-discontiguous).\n')
         f.write("\n".join(grouped))
 
-
+from bkbias.bias import output_bias_diagline
 def generate_bias(enable_pi: bool = True) -> str:
     """Return Popper bias string for predicting output pixels."""
     bias_lines: List[str] = []
+    bias_lines2: List[str] = []
 
 
 
-    if enable_pi:
+    if  enable_pi:
         bias_lines.extend(
             [
                 "enable_pi.",
@@ -684,20 +688,24 @@ def generate_bias(enable_pi: bool = True) -> str:
         ]
     )
     const_ints  = [1,2,3,4,5,6,7,8,9,0]
+    const_ints  = [1,2,0]
     const_colors= [1,2,3,4,5,6,7,8,9,0]
 
     for k in const_ints:
-        bias_lines.append(f"body_pred(int_{k},1).")
-        bias_lines.append(f"type(int_{k},(int,)).")
-        bias_lines.append(f"direction(int_{k},(out,)).")
+        bias_lines2.append(
+            f"body_pred(int_{k},1).\n"
+            f"type(int_{k},(int,)).\n"
+            f"direction(int_{k},(out,))."
+        )
     # for k in const_colors:
     #     bias_lines.append(f"body_pred(col_{k},1).")
     #     bias_lines.append(f"type(col_{k},(color,)).")
     #     bias_lines.append(f"direction(col_{k},(out,)).")
+    bias_lines2.append(output_bias_diagline())
 
 
 
-    return "\n".join(bias_lines)+ "\n"
+    return "\n".join(bias_lines2)+ "\n"
 
 def inpix_bk_lines(task_data: Dict[str, any], background_color: int | None = None) -> List[str]:
     if background_color is None:
