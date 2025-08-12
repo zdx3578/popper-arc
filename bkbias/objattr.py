@@ -486,7 +486,8 @@ def objects_to_bk_lines(
 
     max_dim = min(max_dim, 30)
     # max_dim = 30
-    lines.append(output_bk_diagline())
+
+
 
         # bk_lines = []
     const_ints  = [1,2,3,4,5,6,7,8,9,0]
@@ -609,6 +610,7 @@ def group_bk_lines(lines: List[str]) -> List[str]:
 
 def save_bk(lines: List[str], path: str) -> None:
     grouped = group_bk_lines(lines)
+    grouped.append(output_bk_diagline())
     with open(path, "w") as f:
         f.write(':- style_check(-discontiguous).\n')
         f.write("\n".join(grouped))
