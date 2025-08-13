@@ -863,6 +863,7 @@ def predict_from_prolog(
     bk_path: str,
     meta_path: str,
     pair_id: str = "p0",
+    bg_color: int | None = None
 ) -> List[List[int]]:
     """Return predicted output grid using ``hyp_path`` and ``bk_path``.
 
@@ -883,7 +884,8 @@ def predict_from_prolog(
 
     meta = json.load(open(meta_path))
     rows, cols = meta.get("output_size", meta.get("size", [0, 0]))
-    grid = np.zeros((rows, cols), dtype=int)
+    # grid = np.zeros((rows, cols), dtype=int)
+    grid = np.full((rows, cols), bg_color, dtype=int)  #
 
     prolog = Prolog()
     prolog.consult(hyp_path)

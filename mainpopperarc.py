@@ -78,7 +78,7 @@ def solve_task(
                     f.write(prog.strip() + "\n")
             else:
                 dump_hypothesis(prog, Path(hyp_path))
-            return True, hyp_path
+            return True, hyp_path, bg_color
         else:
             print(f"No solution for {task_id}")
             return False, None
@@ -160,7 +160,7 @@ def main() -> None:
         print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
 
         print(f"Processing {tid} ({idx}/{total_tasks})")
-        solved, hyp = solve_task(
+        solved, hyp, bg_color = solve_task(
             tid,
             train_tasks[tid],
             output_base=args.out,
@@ -183,11 +183,11 @@ def main() -> None:
                     pair["output"],
                     test_dir,
                     enable_pi=args.enable_pi,
-                    background_color=None,
+                    background_color=bg_color,
                     pixel_threshold_pct=args.bg_threshold,
                 )
                 meta_path = os.path.join(test_dir, "grid_meta.json")
-                pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0")
+                pred_grid = predict_from_prolog(hyp, bk_path, meta_path, pair_id="p0", bg_color=bg_color)
                 print_grid(pred_grid, f"Test {t_idx} predicted")
                 save_grid_txt(pred_grid, os.path.join(test_dir, "pred.txt"))
                 exact, pix_acc = evaluate_prediction(pred_grid, pair["output"])

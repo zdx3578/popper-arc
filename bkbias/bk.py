@@ -18,22 +18,25 @@ def output_bk_diagline():
 
         % step(1). step(2). step(3). step(4). step(5).
 
+        signum(N,S) :- N > 0, !, S = 1.
+        signum(N,S) :- N < 0, !, S = -1.
+        signum(_,0).
+
+        % 含步长 S 的 45° 连线（含端点）
+        % 只依赖 SWI 的算术与 between/3；不依赖 same_sign/safe_mod 等
         on_diag_between_k(X,Y,X1,Y1,X2,Y2,S):-
-          % 端点必须成 45°
-          sub(X2,X1,DXe), sub(Y2,Y1,DYe),
-          abs_val(DXe,ADx), abs_val(DYe,ADy), eq(ADx,ADy),
-          % S >= 1
-          geq(S,1),
-          ( ADx =:= 0 ->
-              % 零长度：只回端点自身（偏移=0，0 可被任意 S 整除）
-              X = X1, Y = Y1
-          ; % 一般情况：沿端点方向，且 |偏移| ∈ [0, ADx] 且 |偏移| mod S = 0
-            sub(X,X1,DX1), sub(Y,Y1,DY1),
-            abs_val(DX1,AD1), abs_val(DY1,AD1),     % |DX1|=|DY1|
-            same_sign(DX1,DXe), same_sign(DY1,DYe), % 朝端点方向
-            int_0(Z0), geq(AD1,Z0), leq(AD1,ADx),
-            safe_mod(AD1,S,R), eq(R,Z0)
-          ).
+          integer(S), S >= 1,
+          DXe is X2 - X1,
+          DYe is Y2 - Y1,
+          ADx is abs(DXe),
+          ADy is abs(DYe),
+          ADx =:= ADy,                % 必须 45°
+          signum(DXe,Sx),
+          signum(DYe,Sy),
+          between(0, ADx, K),         % K=0..ADx（含端点）
+          0 is K mod S,               % 步长整除
+          X is X1 + K*Sx,
+          Y is Y1 + K*Sy.
 
         % 端点配对（像素级，等长=45°），Chebyshev 距离 d∞ = max(|dx|,|dy|)
         diag_pair_near(P,C,X1,Y1,X2,Y2) :-             % 最近
