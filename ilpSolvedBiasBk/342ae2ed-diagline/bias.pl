@@ -42,3 +42,36 @@ body_pred(on_diag_between_k,7).
 type(on_diag_between_k,(coord,coord,epcoord,epcoord,epcoord,epcoord,int,)).
 direction(on_diag_between_k,(out,out,in,in,in,in,in,)).
 
+
+
+body_pred(int_1,1).
+type(int_1,(int,)).
+direction(int_1,(out,)).
+body_pred(int_2,1).
+type(int_2,(int,)).
+direction(int_2,(out,)).
+% body_pred(int_3,1).
+% type(int_3,(int,)).
+% direction(int_3,(out,)).
+% body_pred(int_4,1).
+% type(int_4,(int,)).
+% direction(int_4,(out,)).
+% body_pred(int_5,1).
+% type(int_5,(int,)).
+% direction(int_5,(out,)).
+% body_pred(int_6,1).
+% type(int_6,(int,)).
+% direction(int_6,(out,)).
+% body_pred(int_7,1).
+% type(int_7,(int,)).
+% direction(int_7,(out,)).
+% body_pred(int_8,1).
+% type(int_8,(int,)).
+% direction(int_8,(out,)).
+% body_pred(int_9,1).
+% type(int_9,(int,)).
+% direction(int_9,(out,)).
+body_pred(int_0,1).
+type(int_0,(int,)).
+direction(int_0,(out,)).
+
