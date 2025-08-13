@@ -14,7 +14,7 @@ def output_bk_diagline():
 
         lex_leq(X1,Y1,X2,Y2):- X1<X2 ; (X1=:=X2, Y1=<Y2).
 
-        safe_mod(A,B,R):- integer(A), integer(B), B>0, R is A mod B.  % SWI 文档见 mod/2
+        safe_mod(A,B,R):- integer(A), integer(B), B>0, R is A mod B.  % SWI 文档见 mod/2   
 
         % step(1). step(2). step(3). step(4). step(5).
 
