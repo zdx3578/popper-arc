@@ -2,58 +2,72 @@ from textwrap import dedent
 
 def output_bk_diagline():
     content = dedent(r'''
-        % 安全算术/比较
-        sub(A,B,C):- integer(A),integer(B), C is A-B.
-        abs_val(A,B):- integer(A), B is abs(A).
-        geq(A,B):- integer(A),integer(B), A>=B.
-        leq(A,B):- integer(A),integer(B), A=<B.
-        eq(A,B):- integer(A),integer(B), A=:=B.
+        %%%% ========= 基础工具（最小集） =========
+sub(A,B,C):- integer(A),integer(B), C is A-B.
+abs_val(A,B):- integer(A), B is abs(A).
+lex_leq(X1,Y1,X2,Y2) :- X1 < X2 ; (X1 =:= X2, Y1 =< Y2).
 
-        same_sign(A,B):- int_0(Z), geq(A,Z), geq(B,Z).
-        same_sign(A,B):- int_0(Z), leq(A,Z), leq(B,Z).
+signum(N,S) :- N > 0, !, S = 1.
+signum(N,S) :- N < 0, !, S = -1.
+signum(_,0).
 
-        lex_leq(X1,Y1,X2,Y2):- X1<X2 ; (X1=:=X2, Y1=<Y2).
+% 四个对角基础方向（零长度回退用）
+diag_basis(-1, 1).  % NE：行-1，列+1
+diag_basis( 1,-1).  % SW：行+1，列-1
+diag_basis( 1, 1).  % SE：行+1，列+1
+diag_basis(-1,-1).  % NW：行-1，列-1
 
-        safe_mod(A,B,R):- integer(A), integer(B), B>0, R is A mod B.  % SWI 文档见 mod/2   
+%%%% ========= 方向（宽松版） =========
+% 非零长度且 45°：由差分符号唯一确定
+% 零长度（单像素）：枚举四个对角方向（任意）
+diag_dir(X1,Y1,X2,Y2,Sx,Sy) :-
+  sub(X2,X1,DX), sub(Y2,Y1,DY),
+  abs_val(DX,ADx), abs_val(DY,ADy),
+  ( ADx =:= ADy, ADx > 0 ->
+      signum(DX,Sx), signum(DY,Sy)
+  ; X1 =:= X2, Y1 =:= Y2 ->
+      diag_basis(Sx,Sy)
+  ).
 
-        % step(1). step(2). step(3). step(4). step(5).
+%%%% ========= 最远对（有线段优先；否则单像素兜底） =========
+% 严格最远（只接受非零长度）
+diag_pair_far_strict(P,C,X1,Y1,X2,Y2) :-
+  inpix(P,X1,Y1,C), inpix(P,X2,Y2,C),
+  lex_leq(X1,Y1,X2,Y2),
+  sub(X2,X1,DX), sub(Y2,Y1,DY),
+  abs_val(DX,ADx), abs_val(DY,ADy),
+  ADx =:= ADy, ADx > 0,
+  \+ ( inpix(P,U1,V1,C), inpix(P,U2,V2,C),
+       lex_leq(U1,V1,U2,V2),
+       sub(U2,U1,DX2), sub(V2,V1,DY2),
+       abs_val(DX2,A2), abs_val(DY2,B2),
+       A2=:=B2, max(A2,B2) > ADx ).
 
-        signum(N,S) :- N > 0, !, S = 1.
-        signum(N,S) :- N < 0, !, S = -1.
-        signum(_,0).
+% 单像素（恰有一个像素）
+single_pix(P,C,X,Y) :-
+  inpix(P,X,Y,C),
+  \+ (inpix(P,U,V,C), (U \= X ; V \= Y)).
 
-        % 含步长 S 的 45° 连线（含端点）
-        % 只依赖 SWI 的算术与 between/3；不依赖 same_sign/safe_mod 等
-        on_diag_between_k(X,Y,X1,Y1,X2,Y2,S):-
-          integer(S), S >= 1,
-          DXe is X2 - X1,
-          DYe is Y2 - Y1,
-          ADx is abs(DXe),
-          ADy is abs(DYe),
-          ADx =:= ADy,                % 必须 45°
-          signum(DXe,Sx),
-          signum(DYe,Sy),
-          between(0, ADx, K),         % K=0..ADx（含端点）
-          0 is K mod S,               % 步长整除
-          X is X1 + K*Sx,
-          Y is Y1 + K*Sy.
+% 有线段就取“最远对”；没有线段才退化为“单像素对”
+diag_pair_far_or_single(P,C,X1,Y1,X2,Y2) :-
+  diag_pair_far_strict(P,C,X1,Y1,X2,Y2).
+diag_pair_far_or_single(P,C,X,Y,X,Y) :-
+  single_pix(P,C,X,Y),
+  \+ diag_pair_far_strict(P,C,_,_,_,_).
 
-        % 端点配对（像素级，等长=45°），Chebyshev 距离 d∞ = max(|dx|,|dy|)
-        diag_pair_near(P,C,X1,Y1,X2,Y2) :-             % 最近
-          inpix(P,X1,Y1,C), inpix(P,X2,Y2,C), lex_leq(X1,Y1,X2,Y2),
-          sub(X2,X1,DX), sub(Y2,Y1,DY), abs_val(DX,ADx), abs_val(DY,ADy), ADx=:=ADy,
-          % 不存在更近的一对
-          \+ (inpix(P,U1,V1,C), inpix(P,U2,V2,C), lex_leq(U1,V1,U2,V2),
-              sub(U2,U1,DX2), sub(V2,V1,DY2), abs_val(DX2,A2), abs_val(DY2,B2),
-              A2=:=B2, max(A2,B2) < ADx).
+%%%% ========= 核心：延长“自身 + 1” =========
+% 关键点：总是以字典序较小的一端 (X1,Y1) 为“尾端”，
+% 沿着反向 (-Sx,-Sy) 推进 K1=1..(Lpix+1)（Lpix=|X2-X1|+1）
+extend_diag_out(P,C,Xo,Yo) :-
+  diag_pair_far_or_single(P,C,X1,Y1,X2,Y2),
+  diag_dir(X1,Y1,X2,Y2,Sx,Sy),
+  sub(X2,X1,DX), abs_val(DX,ADx),
+  Lplus is ADx + 2,           % Lpix+1
+  ExSx is -Sx,  ExSy is -Sy,  % 从 (X1,Y1) 反向延
+  between(1, Lplus, K1),
+  Xo is X1 + K1*ExSx,
+  Yo is Y1 + K1*ExSy.
 
-        diag_pair_far(P,C,X1,Y1,X2,Y2) :-              % 最远
-          inpix(P,X1,Y1,C), inpix(P,X2,Y2,C), lex_leq(X1,Y1,X2,Y2),
-          sub(X2,X1,DX), sub(Y2,Y1,DY), abs_val(DX,ADx), abs_val(DY,ADy), ADx=:=ADy,
-          % 不存在更远的一对
-          \+ (inpix(P,U1,V1,C), inpix(P,U2,V2,C), lex_leq(U1,V1,U2,V2),
-              sub(U2,U1,DX2), sub(V2,V1,DY2), abs_val(DX2,A2), abs_val(DY2,B2),
-              A2=:=B2, max(A2,B2) > ADx).
     ''')
     return content
 
