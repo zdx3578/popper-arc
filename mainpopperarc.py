@@ -152,17 +152,30 @@ def main() -> None:
     success_count = 0
     if args.task_id:
         selected = [(tid, cnt) for tid, cnt in task_counts if tid == args.task_id]
+
+        if not selected and not evaltesttask and args.task_id in eval_tasks:
+            # 动态计算该 eval 任务的像素统计
+            eval_cnt = count_non_background_pixels(eval_tasks[args.task_id], args.bg_threshold)
+            selected = [(args.task_id, eval_cnt)]
+            print(f"[INFO] task_id {args.task_id} 不在训练集合中，已从 eval 集合载入。")
+        elif not selected and args.task_id not in eval_tasks:
+            print(f"[WARN] 未找到指定 task_id: {args.task_id}（既不在训练也不在 eval），不执行求解。")
+
     else:
         selected = task_counts
 
     total_tasks = len(selected)
     for idx, (tid, _) in enumerate(selected, start=1):
+        if tid in train_tasks:
+            current_task_data = train_tasks[tid]
+        else:
+            current_task_data = eval_tasks[tid]
         print(f" * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ")
 
         print(f"Processing {tid} ({idx}/{total_tasks})")
         solved, hyp, bg_color = solve_task(
             tid,
-            train_tasks[tid],
+            current_task_data,
             output_base=args.out,
             use_pixels=use_pixels,
             bk_use_pixels=bk_use_pixels,
