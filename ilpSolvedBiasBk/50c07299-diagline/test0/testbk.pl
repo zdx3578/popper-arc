@@ -94,69 +94,132 @@ is_color_obj(p0,pairid0in8982473621897940504,2).
 is_color_obj(p0,pairid0in8982473621897940504,2).
 is_color_obj(p0,pairid0in8982473621897940504,2).
 
-        %%%% ========= 基础工具（最小集） =========
-sub(A,B,C):- integer(A),integer(B), C is A-B.
-abs_val(A,B):- integer(A), B is abs(A).
-lex_leq(X1,Y1,X2,Y2) :- X1 < X2 ; (X1 =:= X2, Y1 =< Y2).
 
-signum(N,S) :- N > 0, !, S = 1.
-signum(N,S) :- N < 0, !, S = -1.
-signum(_,0).
 
-% 四个对角基础方向（零长度回退用）
-diag_basis(-1, 1).  % NE：行-1，列+1
-diag_basis( 1,-1).  % SW：行+1，列-1
-diag_basis( 1, 1).  % SE：行+1，列+1
-diag_basis(-1,-1).  % NW：行-1，列-1
 
-%%%% ========= 方向（宽松版） =========
-% 非零长度且 45°：由差分符号唯一确定
-% 零长度（单像素）：枚举四个对角方向（任意）
-diag_dir(X1,Y1,X2,Y2,Sx,Sy) :-
-  sub(X2,X1,DX), sub(Y2,Y1,DY),
-  abs_val(DX,ADx), abs_val(DY,ADy),
-  ( ADx =:= ADy, ADx > 0 ->
-      signum(DX,Sx), signum(DY,Sy)
-  ; X1 =:= X2, Y1 =:= Y2 ->
-      diag_basis(Sx,Sy)
-  ).
 
-%%%% ========= 最远对（有线段优先；否则单像素兜底） =========
-% 严格最远（只接受非零长度）
-diag_pair_far_strict(P,C,X1,Y1,X2,Y2) :-
-  inpix(P,X1,Y1,C), inpix(P,X2,Y2,C),
-  lex_leq(X1,Y1,X2,Y2),
-  sub(X2,X1,DX), sub(Y2,Y1,DY),
-  abs_val(DX,ADx), abs_val(DY,ADy),
-  ADx =:= ADy, ADx > 0,
-  \+ ( inpix(P,U1,V1,C), inpix(P,U2,V2,C),
-       lex_leq(U1,V1,U2,V2),
-       sub(U2,U1,DX2), sub(V2,V1,DY2),
-       abs_val(DX2,A2), abs_val(DY2,B2),
-       A2=:=B2, max(A2,B2) > ADx ).
 
-% 单像素（恰有一个像素）
-single_pix(P,C,X,Y) :-
-  inpix(P,X,Y,C),
-  \+ (inpix(P,U,V,C), (U \= X ; V \= Y)).
 
-% 有线段就取“最远对”；没有线段才退化为“单像素对”
-diag_pair_far_or_single(P,C,X1,Y1,X2,Y2) :-
-  diag_pair_far_strict(P,C,X1,Y1,X2,Y2).
-diag_pair_far_or_single(P,C,X,Y,X,Y) :-
-  single_pix(P,C,X,Y),
-  \+ diag_pair_far_strict(P,C,_,_,_,_).
 
-%%%% ========= 核心：延长“自身 + 1” =========
-% 关键点：总是以字典序较小的一端 (X1,Y1) 为“尾端”，
-% 沿着反向 (-Sx,-Sy) 推进 K1=1..(Lpix+1)（Lpix=|X2-X1|+1）
-extend_diag_out(P,C,Xo,Yo) :-
-  diag_pair_far_or_single(P,C,X1,Y1,X2,Y2),
-  diag_dir(X1,Y1,X2,Y2,Sx,Sy),
-  sub(X2,X1,DX), abs_val(DX,ADx),
-  Lplus is ADx + 2,           % Lpix+1
-  ExSx is -Sx,  ExSy is -Sy,  % 从 (X1,Y1) 反向延
-  between(1, Lplus, K1),
-  Xo is X1 + K1*ExSx,
-  Yo is Y1 + K1*ExSy.
 
+
+
+
+
+
+
+
+
+
+%%%% ====== 基础 ======
+sub(A, B, C):-
+	 integer(A),
+		integer(B),
+	C is A - B.
+abs_val(A, B):-
+	 integer(A),
+	B is abs(A).
+lex_leq(X1, Y1, X2, Y2) :-
+	X1 < X2;
+(X1 =:= X2, Y1 =< Y2).
+
+signum(N, S) :-
+	N > 0,
+	!,
+	S = 1.
+signum(N, S) :-
+	N < 0,
+	!,
+	S =  - 1.
+signum(_, 0).
+
+%%%% ====== 45° 连续性判定 ======
+% 连续：在 X1..X2 间，每一步都有像素（步长 Sx,Sy ∈ {-1,1}）
+contiguous_diag(P, C, X1, Y1, X2, Y2) :-
+	sub(X2, X1, DX),
+	sub(Y2, Y1, DY),
+	abs_val(DX, ADx),
+	abs_val(DY, ADy),
+	ADx =:= ADy,
+	% 45°
+	signum(DX, Sx),
+	signum(DY, Sy),
+	forall(between(0, ADx, K),
+		(X is X1 + K*Sx,
+			Y is Y1 + K*Sy,
+			 inpix(P, X, Y, C))).
+
+% 无法向两端再延一步（极大性）
+not_extendable_head(P, C, X1, Y1, X2, Y2) :-
+	signum(X2 - X1, Sx),
+	signum(Y2 - Y1, Sy),
+	X0 is X1 - Sx,
+	Y0 is Y1 - Sy,
+	 \+  inpix(P, X0, Y0, C).
+
+not_extendable_tail(P, C, X1, Y1, X2, Y2) :-
+	signum(X2 - X1, Sx),
+	signum(Y2 - Y1, Sy),
+	X3 is X2 + Sx,
+	Y3 is Y2 + Sy,
+	 \+  inpix(P, X3, Y3, C).
+
+%%%% ====== 线段对象：最大连续 45° 段（含单像素退化） ======
+% 非零长度且最大
+% ===== 非零长度最大连续段 =====
+seg(P, C, X1, Y1, X2, Y2) :-
+	 inpix(P, X1, Y1, C),
+	 inpix(P, X2, Y2, C),
+	lex_leq(X1, Y1, X2, Y2),
+	% 现在变量已绑定，可以安全用 </2, =</2
+	sub(X2, X1, DX),
+	sub(Y2, Y1, DY),
+	abs_val(DX, ADx),
+	abs_val(DY, ADy),
+	ADx =:= ADy,
+	ADx > 0,
+	% 45° 且非零长度
+	signum(DX, Sx),
+	signum(DY, Sy),
+	% 连续性：两端之间每一步都在 inpix 里
+	forall(between(0, ADx, K),
+		(X is X1 + K*Sx,
+			Y is Y1 + K*Sy,
+			 inpix(P, X, Y, C))),
+	% 极大：两端再走一步就不是该色
+	X0 is X1 - Sx,
+	Y0 is Y1 - Sy,
+	 \+  inpix(P, X0, Y0, C),
+	X3 is X2 + Sx,
+	Y3 is Y2 + Sy,
+	 \+  inpix(P, X3, Y3, C),
+	!.
+
+% ===== 单像素退化段（该色仅此一个像素）=====
+seg(P, C, X, Y, X, Y) :-
+	 inpix(P, X, Y, C),
+	 \+ (inpix(P, U, V, C),
+		(U \= X;
+	V \= Y)),
+	!.
+
+
+%%%% ====== 从“词典序较小端”反向延长（生成 Lpix+1 个点） ======
+seg_extend_point(X1, Y1, X2, Y2, Xo, Yo) :-
+	sub(X2, X1, DX),
+	abs_val(DX, ADx),
+	% ADx = |X2-X1|
+	(ADx > 0 ->
+	signum(DX, Sx),
+		sub(Y2, Y1, DY),
+		signum(DY, Sy);
+	% 单像素：四个对角方向任取其一（若要“观测优先”，可在此改为从图中抽方向）
+	Sx =  - 1,
+		Sy = 1% 默认 NE，简洁稳定
+		),
+	Kmax is ADx + 2,
+	% Lpix=ADx+1 → Lpix+1=ADx+2
+	between(1, Kmax, K),
+	% 统一从“词典序较小端”(X1,Y1) 反向推进
+	Xo is X1 - K*Sx,
+	Yo is Y1 - K*Sy.
