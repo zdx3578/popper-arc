@@ -18,6 +18,8 @@ from init.init import prepare_arc_data, get_test_pairs
 from bkbias.objattr import (
     determine_background_color,
     generate_files_from_task,
+    extract_objects_from_task,
+    
     nonbg_pixels,
     run_popper_from_dir,
     generate_test_bk,
@@ -97,6 +99,10 @@ def solve_task(
             for idx, pair in enumerate(task_data.get("train", [])):
                 print_grid(pair.get("input"), f"Train {task_id} input {idx}")
                 print_grid(pair.get("output"), f"Train {task_id} output {idx}")
+        objs = extract_objects_from_task(task_data, bg_color)
+        from bkbias.object_matching import analyze_task_transformations
+
+        transformations = analyze_task_transformations(task_data, objs)
         bk_path, bias_path, exs_path = generate_files_from_task(
             task_data,
             out_dir,
@@ -109,6 +115,8 @@ def solve_task(
             max_clauses=max_clauses,
             max_vars=max_vars,
             max_body=max_body,
+            objs=objs,
+            transformations=transformations,
         )
         # for label, path in ("BK", bk_path), ("Bias", bias_path), ("Examples", exs_path):
         #     print(f"\n============================================== {label} for {task_id} =======================")

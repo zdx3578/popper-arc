@@ -660,6 +660,8 @@ def generate_files_from_task(
     max_clauses: int = 4,
     max_vars: int = 6,
     max_body: int = 4,
+    objs: Dict[str, List[Tuple[int, List[Dict[str, Any]]]]] | None = None,
+    transformations: List[Tuple[int, Dict[str, Any]]] | None = None,
 ) -> Tuple[str, str, str]:
     """Generate BK, bias and exs files from a task JSON.
 
@@ -694,7 +696,12 @@ def generate_files_from_task(
         background_color = determine_background_color(
             task_data, pixel_threshold_pct=pixel_threshold_pct, debug=False
         )
-    objs = extract_objects_from_task(task_data, background_color)
+    if objs is None:
+        objs = extract_objects_from_task(task_data, background_color)
+    if transformations is None:
+        from .object_matching import analyze_task_transformations
+
+        transformations = analyze_task_transformations(task_data, objs)
 
     if bk_use_pixels is None:
         bk_use_pixels = use_pixels
@@ -731,6 +738,16 @@ def generate_files_from_task(
     logger.debug("Saved bias to %s", bias_path)
     save_lines(exs_lines, exs_path)
     logger.debug("Saved examples to %s", exs_path)
+    # save transformation analysis for potential downstream use
+    trans_path = os.path.join(output_dir, "transformations.json")
+    with open(trans_path, "w") as f:
+        json.dump(
+            transformations,
+            f,
+            indent=2,
+            default=lambda o: list(o) if isinstance(o, (set, frozenset)) else o,
+        )
+    logger.debug("Saved transformations to %s", trans_path)
     logger.debug("Generation complete: %s %s %s", bk_path, bias_path, exs_path)
     return bk_path, bias_path, exs_path
 
@@ -923,14 +940,25 @@ def run_popper_for_task(
     pixel_threshold_pct: int = 40,
     ):
     """Generate Popper input files for ``task`` and run Popper."""
+    task_data = load_task(task) if isinstance(task, str) else task
+    bg_color = determine_background_color(
+        task_data, pixel_threshold_pct=pixel_threshold_pct, debug=False
+    )
+    objs = extract_objects_from_task(task_data, bg_color)
+    from .object_matching import analyze_task_transformations
+
+    transformations = analyze_task_transformations(task_data, objs)
     bk, bias, exs = generate_files_from_task(
-        task,
+        task_data,
         output_dir,
         use_pixels=use_pixels,
         bk_use_pixels=bk_use_pixels,
         exs_use_pixels=exs_use_pixels,
         enable_pi=enable_pi,
         pixel_threshold_pct=pixel_threshold_pct,
+        background_color=bg_color,
+        objs=objs,
+        transformations=transformations,
     )
     return run_popper_subprocess(output_dir)
 

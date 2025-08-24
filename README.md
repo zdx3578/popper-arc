@@ -40,6 +40,10 @@ if prog is not None:
 
 This repository contains utilities in `bkbias/objattr.py` to generate the BK, bias and example files from an ARC task and run Popper programmatically.
 
+Recent refactoring separates object extraction from file generation.  Use
+`extract_objects_from_task` and `analyze_task_transformations` to inspect how
+input objects map to outputs before calling `generate_files_from_task`.
+
 ### Example: run Popper on a task
 
 ```
