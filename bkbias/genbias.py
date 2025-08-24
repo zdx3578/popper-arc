@@ -85,6 +85,7 @@ def generate_bias(
     bias_lines.extend(
         [
             "head_pred(outpix,4).",
+            "body_pred(inpix,4).",
             "body_pred(inbelongs,4).",
             "body_pred(objholes,3).",
             "body_pred(grid_size,3).",
@@ -103,6 +104,7 @@ def generate_bias(
             "type(pair). type(obj).",
             "type(coord). type(color). type(int).",
             "type(outpix,(pair,coord,coord,color)).",
+            "type(inpix,(pair,coord,coord,color)).",
             "type(inbelongs,(pair,obj,coord,coord)).",
             "type(objholes,(pair,obj,int)).",
             "type(grid_size,(pair,int,int)).",
@@ -119,6 +121,7 @@ def generate_bias(
             # "type(sub,(coord,coord,int)).",
             # "type(add,(coord,int,coord)).",
             "direction(outpix,(in,in,in,out)).",
+            "direction(inpix,(in,in,in,out)).",
             "direction(inbelongs,(in,out,in,in)).",
             "direction(objholes,(in,in,out)).",
             "direction(grid_size,(in,out,out)).",

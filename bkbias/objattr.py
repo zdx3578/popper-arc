@@ -772,7 +772,23 @@ def run_popper_from_dir(
 
     popper_py = pathlib.Path(popper_root, "popper.py").resolve()
     if not popper_py.exists():
-        raise FileNotFoundError(popper_py)
+        # Fallback: try Popper Python API if installed via pip
+        try:
+            from popper.util import Settings  # type: ignore
+            from popper.loop import learn_solution  # type: ignore
+
+            settings = Settings(kbpath=str(kb_path))
+            prog, score, stats = learn_solution(settings)
+            prog_path = kb_path / "program.pl"
+            if prog is not None:
+                prog_path.write_text("\n".join(prog) + "\n", encoding="utf8")
+                return str(prog_path), {"rc": 0, "score": score}
+            else:
+                return None, {"rc": 0, "reason": "no_solution"}
+        except Exception as e:  # pragma: no cover - runtime fallback
+            raise FileNotFoundError(
+                f"Neither local popper.py found at {popper_root} nor working Popper API: {e}"
+            )
 
     cmd = [sys.executable, str(popper_py), str(kb_path), "--timeout", str(timeout)]
     if debug:

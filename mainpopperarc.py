@@ -7,7 +7,10 @@ import traceback
 from typing import Any, Dict, List, Tuple
 import shutil
 import concurrent.futures
-import psutil
+try:
+    import psutil  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    psutil = None
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,7 +34,11 @@ DEFAULT_ENABLE_PI = True
 
 def default_worker_count(reserve: int = 3) -> int:
     """Return default number of parallel workers."""
-    total = psutil.cpu_count(logical=False) or 1
+    if psutil is not None:
+        total = psutil.cpu_count(logical=False) or 1
+    else:
+        import os
+        total = os.cpu_count() or 1
     return max(1, total - reserve)
 
 
@@ -326,42 +333,31 @@ def main() -> None:
 
     show_stdout_tid = random.choice(selected)[0] if selected else None
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
-        future_map = {}
+    if workers == 1:
+        # Run sequentially to avoid process spawning in restricted environments
         for idx, (tid, _) in enumerate(selected, start=1):
-            if tid in train_tasks:
-                current_task_data = train_tasks[tid]
-            else:
-                current_task_data = eval_tasks[tid]
+            current_task_data = train_tasks.get(tid) or eval_tasks.get(tid)
             print(
                 " * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * "
             )
-            print(f"Queueing {tid} ({idx}/{total_tasks})")
-            logger.debug("Queueing task %s", tid)
-            fut = ex.submit(
-                solve_task,
-                tid,
-                current_task_data,
-                output_base=args.out,
-                use_pixels=use_pixels,
-                bk_use_pixels=bk_use_pixels,
-                exs_use_pixels=exs_use_pixels,
-                enable_pi=args.enable_pi,
-                bg_threshold=args.bg_threshold,
-                popper_timeout=args.popper_timeout,
-                max_clauses=args.max_clauses,
-                max_vars=args.max_vars,
-                max_body=args.max_body,
-                # popper_debug=args.popper_debug,
-                popper_debug=args.debug,
-                show_stdout=(tid == show_stdout_tid),
-            )
-            future_map[fut] = tid
-
-        for fut in concurrent.futures.as_completed(future_map):
-            tid = future_map[fut]
+            print(f"Running {tid} ({idx}/{total_tasks})")
             try:
-                solved, hyp = fut.result()
+                solved, hyp = solve_task(
+                    tid,
+                    current_task_data,
+                    output_base=args.out,
+                    use_pixels=use_pixels,
+                    bk_use_pixels=bk_use_pixels,
+                    exs_use_pixels=exs_use_pixels,
+                    enable_pi=args.enable_pi,
+                    bg_threshold=args.bg_threshold,
+                    popper_timeout=args.popper_timeout,
+                    max_clauses=args.max_clauses,
+                    max_vars=args.max_vars,
+                    max_body=args.max_body,
+                    popper_debug=args.debug,
+                    show_stdout=True,
+                )
             except Exception as e:
                 print(f"Task {tid} failed: {e}")
                 traceback.print_exc()
@@ -379,7 +375,6 @@ def main() -> None:
                     enable_pi=args.enable_pi,
                     bg_threshold=args.bg_threshold,
                 )
-
                 all_results[tid] = task_results
                 print(f"Task {tid} results: {task_results}")
                 if all_tests_successful(task_results):
@@ -387,10 +382,75 @@ def main() -> None:
 
             tasks_completed += 1
             print_progress(success_count, tasks_completed, total_tasks)
-
             print('\n')
             print(f"Finished {tid}\n")
             logger.debug("Completed task %s", tid)
+    else:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as ex:
+            future_map = {}
+            for idx, (tid, _) in enumerate(selected, start=1):
+                if tid in train_tasks:
+                    current_task_data = train_tasks[tid]
+                else:
+                    current_task_data = eval_tasks[tid]
+                print(
+                    " * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * "
+                )
+                print(f"Queueing {tid} ({idx}/{total_tasks})")
+                logger.debug("Queueing task %s", tid)
+                fut = ex.submit(
+                    solve_task,
+                    tid,
+                    current_task_data,
+                    output_base=args.out,
+                    use_pixels=use_pixels,
+                    bk_use_pixels=bk_use_pixels,
+                    exs_use_pixels=exs_use_pixels,
+                    enable_pi=args.enable_pi,
+                    bg_threshold=args.bg_threshold,
+                    popper_timeout=args.popper_timeout,
+                    max_clauses=args.max_clauses,
+                    max_vars=args.max_vars,
+                    max_body=args.max_body,
+                    # popper_debug=args.popper_debug,
+                    popper_debug=args.debug,
+                    show_stdout=(tid == show_stdout_tid),
+                )
+                future_map[fut] = tid
+
+            for fut in concurrent.futures.as_completed(future_map):
+                tid = future_map[fut]
+                try:
+                    solved, hyp = fut.result()
+                except Exception as e:
+                    print(f"Task {tid} failed: {e}")
+                    traceback.print_exc()
+                    tasks_completed += 1
+                    print_progress(success_count, tasks_completed, total_tasks)
+                    continue
+
+                if solved and hyp:
+                    task_results = run_test_evaluation(
+                        hyp,
+                        tid,
+                        train_tasks,
+                        train_sols,
+                        output_base=args.out,
+                        enable_pi=args.enable_pi,
+                        bg_threshold=args.bg_threshold,
+                    )
+
+                    all_results[tid] = task_results
+                    print(f"Task {tid} results: {task_results}")
+                    if all_tests_successful(task_results):
+                        success_count += 1
+
+                tasks_completed += 1
+                print_progress(success_count, tasks_completed, total_tasks)
+
+                print('\n')
+                print(f"Finished {tid}\n")
+                logger.debug("Completed task %s", tid)
 
     print("\n=== Summary ===")
     print(f"Total solved: {success_count}/{total_tasks}")

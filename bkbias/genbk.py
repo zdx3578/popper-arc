@@ -77,7 +77,11 @@ def save_bk(lines: List[str], path: str) -> None:
     grouped = group_bk_lines(lines)
     logger.debug("Saving BK to %s", path)
     with open(path, "w") as f:
+        # Relax discontiguous warnings and declare dynamic preds so missing facts don't error
         f.write(':- style_check(-discontiguous).\n')
+        f.write(':- dynamic inpix/4, inbelongs/4, objholes/3, grid_size/3, ' \
+                'color_value/1, object/1, belongs/2, color/2, size/2, holes/2, ' \
+                'add/3, sub/3, coord_const/1.\n')
         f.write("\n".join(grouped))
 
 
