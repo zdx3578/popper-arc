@@ -19,7 +19,7 @@ from bkbias.objattr import (
     determine_background_color,
     generate_files_from_task,
     extract_objects_from_task,
-    
+
     nonbg_pixels,
     run_popper_from_dir,
     generate_test_bk,
@@ -99,10 +99,15 @@ def solve_task(
             for idx, pair in enumerate(task_data.get("train", [])):
                 print_grid(pair.get("input"), f"Train {task_id} input {idx}")
                 print_grid(pair.get("output"), f"Train {task_id} output {idx}")
-        objs = extract_objects_from_task(task_data, bg_color)
-        from bkbias.object_matching import analyze_task_transformations
+        # objs = extract_objects_from_task(task_data, bg_color)
 
-        transformations = analyze_task_transformations(task_data, objs)
+        from analy.AttrActionIndex import pair_states_from_task
+        pair_states = pair_states_from_task(task_data, bg_color)
+        from analy.enhanced_meta_exact import EnhancedPatternMetaAnalyzerExact
+        patterAnayResult = EnhancedPatternMetaAnalyzerExact().analyze(pair_states, base_feats=None)
+
+
+        # bk_path, bias_path, exs_path = generate_files_from_analyzer(task_data, res, outdir)
         bk_path, bias_path, exs_path = generate_files_from_task(
             task_data,
             out_dir,
