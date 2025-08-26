@@ -159,7 +159,83 @@ class ClassifyBuckets:
 
 
 
+def _safe_color_counts(by_color: Dict[int, object]) -> Dict[int, int]:
+    """兼容 value 既可能是像素坐标列表，也可能已经是计数的场景。"""
+    counts = {}
+    for c, v in by_color.items():
+        if isinstance(v, int):
+            counts[c] = v
+        elif hasattr(v, '__len__'):
+            counts[c] = len(v)
+        else:
+            # 回退：无法判断时按 1 计（避免崩），也可改为 0 或抛错，视你工程需要
+            counts[c] = 1
+    return counts
 
+
+def _infer_color_map_from_counts(cin: Dict[int, int], cout: Dict[int, int]) -> Dict[int, int]:
+    """
+    基于像素计数的最简单一对一映射推断：
+    - 若输入颜色 c 的像素数在输出里存在唯一匹配的颜色，并且不与其他输入产生冲突，则建立 c->c'。
+    - 否则保持为空（表示无法仅凭计数确定）。
+    """
+    out_by_count: Dict[int, List[int]] = {}
+    for c, n in cout.items():
+        out_by_count.setdefault(n, []).append(c)
+
+    mapping: Dict[int, int] = {}
+    used_out: Set[int] = set()
+    for c_in, n in cin.items():
+        candidates = out_by_count.get(n, [])
+        # 只有在唯一候选且未被其它输入占用时，才建立映射
+        if len(candidates) == 1 and candidates[0] not in used_out:
+            mapping[c_in] = candidates[0]
+            used_out.add(candidates[0])
+
+    # 要求是单射（不强制满射），否则返回空表示不确定
+    if len(mapping) == 0:
+        return {}
+    return mapping
+
+
+def _merge_consistent_maps(maps: List[Dict[int, int]]) -> Optional[Dict[int, int]]:
+    """
+    取所有 pair 映射的“点对一致交集”（只保留在每个非空映射中都一致的键值对）。
+    若所有映射都为空或没有共同部分，则返回 {}；如果列表本身为空，返回 None。
+    """
+    if not maps:
+        return None
+    # 只统计非空映射
+    non_empty = [m for m in maps if m]
+    if not non_empty:
+        return {}
+    # 从第一个非空开始做“相等交集”
+    base = dict(non_empty[0])
+    for m in non_empty[1:]:
+        for k in list(base.keys()):
+            if k not in m or m[k] != base[k]:
+                base.pop(k)
+        if not base:
+            break
+    return base
+
+
+def _get_dims(scene) -> Tuple[int, int]:
+    """
+    兼容不同 Scene 表示，尽量取 (width, height)。
+    - 优先：scene.w, scene.h
+    - 次之：scene.grid.shape -> (h, w) 需要翻转
+    - 否则：(0,0)
+    """
+    w = getattr(scene, 'w', None)
+    h = getattr(scene, 'h', None)
+    if isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0:
+        return (w, h)
+    grid = getattr(scene, 'grid', None)
+    if grid is not None and hasattr(grid, 'shape') and len(grid.shape) == 2:
+        hh, ww = grid.shape
+        return (int(ww), int(hh))
+    return (0, 0)
 
 
 # class EnhancedPatternMetaAnalyzerExact(Analyzer):
@@ -245,83 +321,7 @@ class EnhancedPatternMetaAnalyzerExact:
         notes = f"rules={rules}"
         return AnalysisResult(rules=rules, predictions=predictions, notes=notes)
 
-    def _safe_color_counts(by_color: Dict[int, object]) -> Dict[int, int]:
-        """兼容 value 既可能是像素坐标列表，也可能已经是计数的场景。"""
-        counts = {}
-        for c, v in by_color.items():
-            if isinstance(v, int):
-                counts[c] = v
-            elif hasattr(v, '__len__'):
-                counts[c] = len(v)
-            else:
-                # 回退：无法判断时按 1 计（避免崩），也可改为 0 或抛错，视你工程需要
-                counts[c] = 1
-        return counts
 
-
-    def _infer_color_map_from_counts(cin: Dict[int, int], cout: Dict[int, int]) -> Dict[int, int]:
-        """
-        基于像素计数的最简单一对一映射推断：
-        - 若输入颜色 c 的像素数在输出里存在唯一匹配的颜色，并且不与其他输入产生冲突，则建立 c->c'。
-        - 否则保持为空（表示无法仅凭计数确定）。
-        """
-        out_by_count: Dict[int, List[int]] = {}
-        for c, n in cout.items():
-            out_by_count.setdefault(n, []).append(c)
-
-        mapping: Dict[int, int] = {}
-        used_out: Set[int] = set()
-        for c_in, n in cin.items():
-            candidates = out_by_count.get(n, [])
-            # 只有在唯一候选且未被其它输入占用时，才建立映射
-            if len(candidates) == 1 and candidates[0] not in used_out:
-                mapping[c_in] = candidates[0]
-                used_out.add(candidates[0])
-
-        # 要求是单射（不强制满射），否则返回空表示不确定
-        if len(mapping) == 0:
-            return {}
-        return mapping
-
-
-    def _merge_consistent_maps(maps: List[Dict[int, int]]) -> Optional[Dict[int, int]]:
-        """
-        取所有 pair 映射的“点对一致交集”（只保留在每个非空映射中都一致的键值对）。
-        若所有映射都为空或没有共同部分，则返回 {}；如果列表本身为空，返回 None。
-        """
-        if not maps:
-            return None
-        # 只统计非空映射
-        non_empty = [m for m in maps if m]
-        if not non_empty:
-            return {}
-        # 从第一个非空开始做“相等交集”
-        base = dict(non_empty[0])
-        for m in non_empty[1:]:
-            for k in list(base.keys()):
-                if k not in m or m[k] != base[k]:
-                    base.pop(k)
-            if not base:
-                break
-        return base
-
-
-    def _get_dims(scene) -> Tuple[int, int]:
-        """
-        兼容不同 Scene 表示，尽量取 (width, height)。
-        - 优先：scene.w, scene.h
-        - 次之：scene.grid.shape -> (h, w) 需要翻转
-        - 否则：(0,0)
-        """
-        w = getattr(scene, 'w', None)
-        h = getattr(scene, 'h', None)
-        if isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0:
-            return (w, h)
-        grid = getattr(scene, 'grid', None)
-        if grid is not None and hasattr(grid, 'shape') and len(grid.shape) == 2:
-            hh, ww = grid.shape
-            return (int(ww), int(hh))
-        return (0, 0)
 
 
     # --------- 关键：跨 train 的严格布尔聚合 ----------
@@ -333,16 +333,83 @@ class EnhancedPatternMetaAnalyzerExact:
         tr_set: Set[Tuple[int,int]] = set()
         cmap_list: List[Dict[int,int]] = []
 
+
         for p in train_pairs:
-            # 1) 属性集合（严格离散）
             inA, outA = p.in_scene.attr, p.out_scene.attr
 
-            B.colors_in  |= set(inA.by_color.keys())
-            B.colors_out |= set(outA.by_color.keys())
-            B.holes_in   |= set(inA.by_holes.keys())
-            B.holes_out  |= set(outA.by_holes.keys())
-            B.sizes_in   |= set(inA.by_size.keys())
-            B.sizes_out  |= set(outA.by_size.keys())
+            # ---- 1) pair 内颜色集合与计数 ----
+            colors_in_set = set(inA.by_color.keys())
+            colors_out_set = set(outA.by_color.keys())
+            counts_in = _safe_color_counts(inA.by_color)
+            counts_out = _safe_color_counts(outA.by_color)
+
+            ps = PairSummary()
+            ps.colors_in = colors_in_set
+            ps.colors_out = colors_out_set
+            ps.color_count_in = counts_in
+            ps.color_count_out = counts_out
+
+            # ---- 2) pair 内尺寸 ----
+            ps.dims_in = _get_dims(p.in_scene)
+            ps.dims_out = _get_dims(p.out_scene)
+
+            # ---- 3) pair 内颜色映射候选（计数法的弱假设）----
+            ps.proposed_color_map = _infer_color_map_from_counts(counts_in, counts_out)
+            if ps.proposed_color_map:
+                B.color_maps.append(ps.proposed_color_map)
+
+            # ---- 4) 若已有几何变换提示，则汇总（可选）----
+            #    - 约定优先从 p.meta 或 attr 中读取；字段名兼容多种可能命名
+            #    - D4：R0, R90, R180, R270, F0, F90, F180, F270（F* 表示含镜像）
+            d4 = getattr(getattr(p, 'meta', None), 'd4', None) \
+                or getattr(inA, 'd4', None) or getattr(outA, 'd4', None)
+            tx = getattr(getattr(p, 'meta', None), 'tx', None) \
+                or getattr(inA, 'tx', None) or getattr(outA, 'tx', None)
+            ty = getattr(getattr(p, 'meta', None), 'ty', None) \
+                or getattr(inA, 'ty', None) or getattr(outA, 'ty', None)
+
+            if isinstance(d4, str):
+                ps.d4 = d4
+            if isinstance(tx, int) and isinstance(ty, int):
+                ps.translation = (tx, ty)
+
+            if ps.d4 or ps.translation:
+                # 同步到任务级聚合
+                if ps.d4 and ps.translation:
+                    B.d4_set.add((ps.d4, ps.translation[0], ps.translation[1]))
+                if ps.translation:
+                    B.translation_set.add(ps.translation)
+
+            # ---- 5) 任务级聚合：并集 ----
+            B.colors_in  |= colors_in_set
+            B.colors_out |= colors_out_set
+            B.color_count_in_total.update(counts_in)
+            B.color_count_out_total.update(counts_out)
+            if ps.dims_in != (0, 0):
+                B.dims_in_set.add(ps.dims_in)
+            if ps.dims_out != (0, 0):
+                B.dims_out_set.add(ps.dims_out)
+
+            # ---- 6) 任务级聚合：交集（首个 pair 初始化，之后求交）----
+            if B.colors_in_intersection is None:
+                B.colors_in_intersection = set(colors_in_set)
+            else:
+                B.colors_in_intersection &= colors_in_set
+
+            if B.colors_out_intersection is None:
+                B.colors_out_intersection = set(colors_out_set)
+            else:
+                B.colors_out_intersection &= colors_out_set
+
+            # ---- 7) 保留 pair 摘要 ----
+            B.per_pair.append(ps)
+
+        # ---- 8) 在所有 pairs 后，抽取跨 pair 一致颜色映射（可能是部分映射）----
+
+
+
+
+
 
             for sig, ids in p.in_scene.attr.by_canon_sig.items():
                 B.canon_clusters_in[sig] = B.canon_clusters_in.get(sig, 0) + len(ids)
@@ -410,7 +477,10 @@ class EnhancedPatternMetaAnalyzerExact:
             B.recolor_intersection = rec_intersection
             B.recolor_union = rec_union
 
+        B.consistent_color_map = _merge_consistent_maps(B.color_maps)
+
         return B
+
 
 
 
