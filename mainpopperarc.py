@@ -103,6 +103,7 @@ def solve_task(
 
         from analy.AttrActionIndex import pair_states_from_task
         pair_states = pair_states_from_task(task_data, bg_color)
+
         from analy.enhanced_meta_exact import EnhancedPatternMetaAnalyzerExact
         patterAnayResult = EnhancedPatternMetaAnalyzerExact().analyze(pair_states, base_feats=None)
 

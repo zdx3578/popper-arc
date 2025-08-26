@@ -17,9 +17,9 @@ class AttrIndex:
     by_color: Dict[int, List[int]] = field(default_factory=dict)
     by_holes: Dict[int, List[int]] = field(default_factory=dict)
     by_size: Dict[Tuple[int, int], List[int]] = field(default_factory=dict)
-    by_shape_sig: Dict[FrozenSet[Tuple[int, Tuple[int, int]]], List[int]] = field(
-        default_factory=dict
-    )
+    by_shape_sig: Dict[FrozenSet[Tuple[int, Tuple[int, int]]], List[int]] = field(default_factory=dict)
+    by_canon_sig: Dict[frozenset, List[int]] = field(default_factory=dict)
+
 
 
 @dataclass

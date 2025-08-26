@@ -207,3 +207,34 @@ def exact_color_map(
             cmap[cin] = cout
 
     return cmap
+
+from typing import List, Dict, Tuple, Optional, Set, Any
+
+Obj = ObjLite = Dict[str, Any]
+
+def is_line_strict(o: Obj) -> bool:
+    """严格线段（水平或垂直）：宽==1 XOR 高==1，且像素填满 bbox"""
+    if (o["width"] == 1) ^ (o["height"] == 1):
+        # 必须每一格都被占据（避免间断）
+        r1,c1,r2,c2 = o["bounding_box"]
+        if o["width"] == 1:
+            return o.area == (r2 - r1 + 1)
+        else:
+            return o.area == (c2 - c1 + 1)
+    return False
+
+def is_box_strict(o: Obj) -> bool:
+    """严格单像素厚度矩形框：所有像素都在 bbox 边界且边连通"""
+    r1,c1,r2,c2 = o["bounding_box"]
+    # 边界像素数量 = 2*(宽+高)-4
+    perim = 2 * (o["width"] + o["height"]) - 4
+    if o.area != perim:
+        return False
+    # 所有像素在四条边
+    rs = o.pixels[:,0]; cs = o.pixels[:,1]
+    on_top    = (rs == r1)
+    on_bottom = (rs == r2)
+    on_left   = (cs == c1)
+    on_right  = (cs == c2)
+    ok = np.all(on_top | on_bottom | on_left | on_right)
+    return bool(ok)
